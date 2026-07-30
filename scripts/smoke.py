@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 load_dotenv()
 
-from ask_luma import corpus  # noqa: E402
-from ask_luma.graph import runner  # noqa: E402
+from agent import corpus  # noqa: E402
+from agent.graph import runner  # noqa: E402
 from behavior_core.config import BAD_SCOPE_V2, BASELINE_V1  # noqa: E402
 from behavior_core.db import init_db  # noqa: E402
 

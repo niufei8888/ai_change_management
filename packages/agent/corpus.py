@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-CORPUS_DIR = Path(__file__).resolve().parents[4] / "corpus"
+CORPUS_DIR = Path(__file__).resolve().parents[2] / "corpus"
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,15 @@ know?" a testable behavior instead of a hypothetical one.
 
 import re
 
-from ask_luma import corpus
+from agent import corpus
+
+# The tool's identity, declared exactly once. Three separate things have to agree
+# on this string: the `#search_docs` reference inside a prompt, the `tool` field
+# the runner writes into the trajectory, and the golden dataset's `tool_called`
+# assertion. If the assertion inferred the tool from the node name instead,
+# renaming the tool would not break it -- it would silently pass forever, which
+# is worse than having no assertion at all.
+TOOL_NAME = "search_docs"
 
 TOP_K = 5
 SNIPPET_CHARS = 800

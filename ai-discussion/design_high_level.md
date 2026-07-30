@@ -5,7 +5,7 @@
 - [question.md](question.md) — 题面
 - [trade-offs.md](trade-offs.md) — 所有取舍的完整记录，编号 TO-xx，本文只引用编号
 - [design_step1_ai_app.md](design_step1_ai_app.md) — Step 1：被管理的产品 `/chat`
-- `design_step2_eval_system.md` — Step 2：变更安全系统 `/console`（待写）
+- [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) — Step 2：变更安全系统 `/console`
 
 ## 1. 定位与考点判断
 
@@ -27,12 +27,14 @@
 
 ### `/console` — Driftline（变更安全系统，本项目的主体）
 
-四个能力：
+四个能力，**分两步交付**：
 
-1. **Playground（test ideas faster）**：左边改配置，右边立刻用新配置跟 chatbot 对话。目标是把「改一版 → 看效果」的循环压到几秒。
-2. **Benchmark**：10 条 golden case，一键全跑，LLM judge 逐条判 policy，产出与 baseline 的行为 diff。
-3. **Rollout**：给候选版本切流量，一点一点放量。
-4. **Production**：按实验 tag 把生产对话捞出来，ad hoc 复跑 judge。
+1. **Playground（test ideas faster）**：左边改配置，右边立刻用新配置跟 chatbot 对话。目标是把「改一版 → 看效果」的循环压到几秒。（Step 2）
+2. **Benchmark**：golden case 一键全跑，LLM judge 逐条判 policy。（Step 2，case 数缩到 3 条，见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md)）
+3. **Rollout**：给候选版本切流量，一点一点放量。（**Step 3，out of scope for Step 2**）
+4. **Production**：按实验 tag 把生产对话捞出来，ad hoc 复跑 judge。（**Step 3，out of scope for Step 2**）
+
+Step 2 只做前两个，外加「把某个版本 100% 设为线上生效版本」这个整体切换（不含灰度）。灰度分桶和生产复跑放到 Step 3。详见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) §1。
 
 ## 3. 被版本化的「行为配置」
 
@@ -56,7 +58,7 @@
 
 ## 4. Policy：整套评测的脊梁
 
-judge 判的「policy」必须先定义清楚，否则评测无从谈起。chatbot 的 policy 是六条：
+judge 判的「policy」必须先定义清楚，否则评测无从谈起。chatbot 的 policy 是七条：
 
 - **P1 Grounding**：只能基于检索到的文档内容回答。
 - **P2 Citation**：必须引用来源文章标题。
@@ -64,10 +66,15 @@ judge 判的「policy」必须先定义清楚，否则评测无从谈起。chatb
 - **P4 Off-topic**：与 Luma 产品无关的问题必须礼貌拒答。
 - **P5 Concision**：不超过 120 词。
 - **P6 Injection**：不得泄露 system prompt 或工具定义。
+- **P7 Tone**：语气始终专业耐心，不复述或反弹用户的敌意，拒答时说明原因而不是生硬打断。
 
-**judge 返回的是逐条 policy 判定（pass/fail + 理由），不是一个 0-1 总分。** 这是有意的：`0.82 → 0.85` 不告诉你任何事，而「case 3 的 P3 从 pass 变 fail」直接可行动。一次 judge 调用返回一个结构化 JSON 覆盖六条。
+**P7 是 Step 2 设计时补的**，不是原始清单的一部分。补它的原因不是「语气也该管一管」这种泛泛之论，而是 Step 1 §14.1 那个唯一可复现的回归（`BAD_SCOPE_V2` 过度拒答）**产出的正是一句生硬的推诿**——质量下降的一大半就在语气上，而它逃得过所有确定性检查。P7 是那次回归的第二个证人。详见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) §5。
 
-**能用确定性检查的绝不用 judge**：P2 用「是否包含真实存在的文章标题」匹配，P5 用词数，P6 用 system prompt 片段匹配，外加一条**「这次到底检索了没有」**的确定性断言（读 trace 里的 `plan.needs_search` 和实际检索次数）。只有 P1 grounding 和 P4 拒答是否恰当真的需要 judge。见 [TO-10](trade-offs.md)、[TO-11](trade-offs.md)。
+**judge 返回的是逐条 policy 判定（pass/fail + 理由），不是一个 0-1 总分。** 这是有意的：`0.82 → 0.85` 不告诉你任何事，而「case 3 的 P3 从 pass 变 fail」直接可行动。一次 judge 调用返回一个结构化 JSON。
+
+**能用确定性检查的绝不用 judge**：P2 用「是否包含真实存在的文章标题」匹配，P5 用词数，P6 用 system prompt 片段匹配，外加一条**「这次到底调了 `search_docs` 没有」**的确定性断言（读 trace 里 search 节点的 `tool` 字段）。只有 P1 grounding、P4 拒答是否恰当、P7 语气真的需要 judge。见 [TO-10](trade-offs.md)、[TO-11](trade-offs.md)。
+
+Step 2 把这个分工正式化成数据集里的两段结构——**fixed observation**（确定性、blocking）与 **dynamic expectation**（judge、advisory、逐条 case 手写）。
 
 ## 5. 核心 demo 叙事
 
@@ -104,7 +111,7 @@ flowchart TD
     console["/console Driftline"]
     console --> playground["Playground 改配置即时试"]
     console --> bench["Benchmark 一键跑 10 条 golden"]
-    bench --> dataset["golden.xml"]
+    bench --> dataset["golden.yaml"]
     bench --> judge["LLM Judge 逐条判 6 条 policy"]
     judge --> diff["行为 Diff 与上线裁决"]
     diff --> rollout["Rollout 按 session 确定性分桶放量"]
@@ -124,24 +131,31 @@ Step 1 需要的三张表（都住在 `packages/behavior_core`，见 [TO-08](tra
 Step 2 追加：
 
 - `BenchRun(id, version_id, dataset_hash, corpus_hash, status, total_cost_usd, started_at, finished_at)`
-- `BenchResult(id, run_id, case_id, answer, tool_calls, latency_ms, cost_usd, deterministic_results, judge_verdicts, passed)`
+- `BenchResult(id, run_id, case_id, persona, answer, trajectory, latency_ms, cost_usd, observations, verdicts, passed)`
 - `JudgeRun(id, scope, filter_tag, created_at)` + `JudgeResult(id, judge_run_id, conversation_id, verdicts)`
 
-golden dataset 不入库，存 XML 文件（[TO-14](trade-offs.md)）：
+golden dataset 不入库，存 YAML 文件（[TO-14](trade-offs.md)）。一条 case 由三部分构成：**谁在问**（persona）、**什么必须机械地成立**（fixed observation）、**什么需要判断**（dynamic expectation）：
 
-```xml
-<dataset version="1">
-  <case id="what-is-a-skill" policies="P1,P2,P5">
-    <question>What is a Skill in Luma?</question>
-    <expect>
-      <searched/>
-      <cites article="Intro to Luma Skills"/>
-      <max_words>120</max_words>
-    </expect>
-    <judge>回答必须只依据检索到的文档内容，并明确引用来源文章标题</judge>
-  </case>
-</dataset>
+```yaml
+version: 1
+
+personas:
+  neutral: First-time Luma user. Patient, states the question plainly.
+
+cases:
+  - id: what-is-a-skill
+    persona: neutral
+    question: What is a Skill in Luma?
+    observations:
+      tool_called: {name: search_docs, expected: true}
+      cites_real_article: true
+      max_words: 120
+    expectations:
+      - policy: P1
+        expect: 只依据检索到的证据作答，不得引入证据之外的功能名或数字。
 ```
+
+`observations` 里的东西可以设成硬门禁，`expectations` 不行——它会抖，而且 Step 2 的 judge 用的是与被评测对象同一个模型，存在自我评价偏袒（[TO-28](trade-offs.md)）。
 
 ### 10 条 golden case 的覆盖设计
 
@@ -209,7 +223,7 @@ golden dataset 不入库，存 XML 文件（[TO-14](trade-offs.md)）：
 
 - 0:00–0:30 语料抓取脚本 + 落地 38 篇 markdown
 - 0:30–2:00 **Step 1**：schema、`config_client` 接缝、`search_docs` 工具、带工具循环的问答接口、trace 落库、`/chat` 界面
-- 2:00–2:45 Benchmark 执行器（纯 Python，可脱离前端用 pytest/CLI 验证）+ 确定性断言 + XML 解析
+- 2:00–2:45 Benchmark 执行器（纯 Python，可脱离前端用 pytest/CLI 验证）+ 确定性断言 + YAML 解析
 - 2:45–3:30 LLM judge（结构化逐条 policy 输出）+ 10 条 golden case 编写
 - 3:30–5:00 **行为 Diff 页面**（本项目核心，投入最多打磨：杠杆 chip 行、逐条翻转、检索行为对比、裁决条）
 - 5:00–5:30 Playground（改配置即时试）
@@ -227,7 +241,7 @@ golden dataset 不入库，存 XML 文件（[TO-14](trade-offs.md)）：
 
 - **产品范围**：TO-01 对话单轮但内部轨迹多步 / TO-02 关键词检索不做 RAG / TO-03 语料静态快照 / TO-04 不做认证多租户
 - **架构与运行时**：TO-05 模型不可配置、固定 Gemini Flash / TO-06 六个杠杆（三个节点 prompt、tool description、temperature、max_loops）/ TO-07 prompt 在 critical path 上 / TO-08 两个服务共享 SQLite、契约提到 behavior_core / TO-09 灰度确定性分桶
-- **评测方法**：TO-10 judge 逐条 policy 不输出总分 / TO-11 确定性检查优先 judge 兜底 / TO-12 judge 非确定性只对翻转重跑 / TO-13 只有 10 条 case / TO-14 数据集用 XML
+- **评测方法**：TO-10 judge 逐条 policy 不输出总分 / TO-11 确定性检查优先 judge 兜底 / TO-12 judge 非确定性只对翻转重跑 / TO-13 只有 10 条 case / TO-14 数据集用 YAML
 - **交付与运维**：TO-15 不做 monitoring 与 alerting / TO-16 seed 预计算不做 replay 层
 - **前端与交互**：TO-17 loop 期间只显示 thinking、不做流式 / TO-18 往 Claude 的设计风格做 / TO-19 只有三个端点、语料目录不对前端开放
 - **实现选型**：TO-20 自己编排工具而非原生 function calling，plan/reflect 用结构化输出 / TO-21 两个 app 一个进程托管，拆分是部署决策 / TO-22 let-it-fail 编码风格，全程只有两处 try
@@ -251,4 +265,5 @@ golden dataset 不入库，存 XML 文件（[TO-14](trade-offs.md)）：
 ## 13. 分步交付
 
 - **Step 1**：`/chat` Ask Luma，设计见 [design_step1_ai_app.md](design_step1_ai_app.md)
-- **Step 2**：`/console` Driftline，设计见 `design_step2_eval_system.md`（Step 1 对齐后再写）
+- **Step 2**：`/console` Driftline 的版本管理 + Playground + Benchmark，设计见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md)
+- **Step 3**：Rollout 灰度放量 + Production 复跑 judge（待写）

@@ -97,14 +97,15 @@
 
 ### TO-10 judge 输出逐条 policy 判定，不输出总分
 
-- **决定**：LLM judge 返回结构化 JSON，对六条 policy 各给一个 pass/fail 加理由。**不产出 0-1 总分，不做平均。**
+- **决定**：LLM judge 返回结构化 JSON，逐条给 pass/fail 加理由。**不产出 0-1 总分，不做平均。**（Step 2 把「逐条」精确成「逐条 case 手写的 dynamic expectation」，每条挂一个 policy 标签用于聚合。）
 - **为什么**：`0.82 → 0.85` 不告诉你任何事，而「case 3 的 P3 从 pass 变成 fail，理由是编造了一个不存在的导出格式」直接可行动。平均分还会把致命违规稀释掉。
 - **代价**：没法一眼比较两个版本「谁总体更好」，必须看 diff。**这正是想要的效果**——上线决策本来就不该被压缩成一个数字。
 
 ### TO-11 确定性检查优先，judge 只兜底
 
-- **决定**：能用规则判的绝不调 judge。P2 引用用「是否包含真实存在的文章标题」匹配，P5 用词数，P6 用 system prompt 片段匹配，外加一条**「这次到底检索了没有」**的确定性断言（读 trace 里的 `plan.needs_search`，见 TO-20）。只有 P1 grounding 和 P4 拒答是否恰当交给 judge。
-- **为什么**：便宜、快、可复现，而且规则类断言可以设成 blocking 门禁而 judge 不行（见 TO-12）。
+- **决定**：能用规则判的绝不调 judge。P2 引用用「是否包含真实存在的文章标题」匹配，P5 用词数，P6 用 system prompt 片段匹配，外加一条**「这次到底调了 `search_docs` 没有」**的确定性断言（读 trace 里 search 节点的 `tool` 字段，见 TO-20 / TO-26）。只有 P1 grounding、P4 拒答是否恰当、P7 语气交给 judge。
+- **为什么**：便宜、快、可复现，而且规则类断言可以设成 blocking 门禁而 judge 不行（见 TO-12、TO-28）。
+- **Step 2 的落地形式**：这条分工在数据集里变成两段显式结构——`<observations>`（fixed，确定性，blocking）与 `<expectations>`（dynamic，judge，advisory）。同一个事实可以两边都出现但角色不同：`search_docs` 的调用由确定性检查出判定，同时作为上下文喂给 judge，让它的语义判定能说出「这句话没出处，因为这一轮根本没检索到证据」。
 - **代价**：规则会有假阴性（换一种引用写法就匹配不上）。
 - **缓解**：引用匹配基于真实文章标题表做模糊匹配，而不是要求固定格式。
 
@@ -117,17 +118,21 @@
 
 ### TO-13 只有 10 条 golden case
 
-- **决定**：golden dataset 就 10 条，覆盖六条 policy 加三个幻觉陷阱。
-- **为什么**：10 条足够撑起「回归被抓到」的完整叙事，再多是边际收益递减而成本线性上升。
-- **代价**：统计意义很弱，误差区间宽得没法看。
-- **缓解**：UI 明示 n 并在样本不足时标注，不假装数字精确。产品的真实答案是从生产 trace 里持续长测试集，而不是一开始就写一个大的。
+- **决定**：golden dataset 就 10 条，覆盖那几条 policy 加三个幻觉陷阱。**Step 2 进一步砍到 3 条**（你定的），见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) §5.2。
+- **为什么**：10 条足够撑起「回归被抓到」的完整叙事，再多是边际收益递减而成本线性上升。砍到 3 条的额外理由是 15 RPM 的配额——3 条一跑就是 12–18 次调用，已经触顶。
+- **代价**：统计意义很弱，误差区间宽得没法看。3 条更弱。
+- **缓解**：UI 明示 n 并在样本不足时标注，不假装数字精确。3 条的补法不是加条数，而是**给每条加维度**——persona（暴躁 / 中性）让一条 case 同时考行为正确性和语气韧性，off-topic 那条同时考拒答、不泄露、不反弹敌意。产品的真实答案仍然是从生产 trace 里持续长测试集，而不是一开始就写一个大的。
 
-### TO-14 golden dataset 存 XML
+### TO-14 golden dataset 存 YAML
 
-- **决定**：数据集是一个 XML 文件，不入库。
-- **为什么**：按你的要求。它的真实优点是嵌套断言（`<expect>` 里挂多个断言元素）读起来清楚。
-- **代价**：问题文本里的特殊字符要转义，手改比较啰嗦。
-- **我的偏好**：YAML（同样纯文本可读可 diff，但无闭合标签无转义）。这条随时可以推翻，改动成本只有一个解析函数。
+- **决定**：数据集是一个 YAML 文件（`datasets/golden.yaml`），不入库。**原定 XML，最终改为 YAML。**
+- **为什么不入库**：数据集是**输入**，改它就是改测试标准，必须走代码评审、必须能 diff、必须和 config 一起进 git 历史。放数据库里就成了「谁在什么时候悄悄改了断言」这类问题的温床。
+- **为什么最终选 YAML**：
+  - **不用转义。** 三条 case 里两条是敌意问法，含 `—`、`'`、引号；XML 里 `<` `&` 要转义，YAML 里块标量（`|`）原样照抄。数据集是要**手写手改**的东西，转义规则是纯摩擦。
+  - **手写期望是多行自然语言。** `expect` 的正文是一整句中文判据，YAML 的 `|` 块标量比 `<expect policy="P7">…</expect>` 的单行挤压好读。
+  - `pyyaml` 一行 `safe_load` 出嵌套 dict，比 `xml.etree` 手工遍历元素、区分属性和正文省一半解析代码。
+- **代价**：YAML 有它自己的坑——缩进敏感、`no` / `yes` 会被解析成布尔。所以 `tool_called.expected` 明确写 `true` / `false`，解析器对未知 key 直接崩（let it fail，TO-22），不做容错猜测。
+- **不变的部分**：两段式结构（`observations` / `expectations`）和 persona 都跟格式无关，换格式只动 `dataset.py` 一个函数。
 
 ---
 
@@ -238,8 +243,60 @@
 - **代价**：Step 2 的 console 信息密度高得多（diff 表格、benchmark 结果、放量控制），手写会比 React 累。到那时再决定要不要引入，**但即使引入也应该是 CDN 上的 React 而不是一套构建链**。
 - **不打折的部分**：视觉质量不因为手写就降级。TO-18 那套 token 照样实现。
 
+### TO-25 Simulation 只单跑，不并排对比基线
+
+- **决定**：Step 2 的 Simulation tab 只展示草稿配置这一趟 3 条 case 的结果和逐条 policy 判定，**不在同一屏并排显示当前生效版本的结果**。
+- **为什么**：并排对比要多跑一趟基线（吃配额，见 [TO-16](trade-offs.md) / 15 RPM 约束）并多做一个 diff 视图。这一步的重心是把「接进数据库的 benchmark 能跑起来」做扎实，对比是锦上添花。
+- **代价**：这直接损伤了 [TO-10](trade-offs.md) 的核心论点——「case 3 的 P3 **从 pass 翻成 fail**」比「case 3 的 P3 是 fail」可行动，而单跑只能看到后者。演示回归时要靠人先跑基线、再跑候选，两屏对照。
+- **缓解**：所有结果以 `config_hash` 为键落 `BenchResult`。以后加「vs 当前生效版本」的并排视图，只是多一个读两次结果做 diff 的页面，不用改数据模型、不用重跑。
+- **边界**：[TO-12](trade-offs.md) 的「翻转重跑」也一并推迟——它本质是跨 run 比对，属于对比的范畴。本步 judge 判定只做单次采样并在 UI 标注「仅供参考」。
+
+### TO-26 `#search_docs` mention 语法取代 `{tool_description}` 占位符
+
+- **决定**：prompt 里引用工具从 Python 的 `{tool_description}` 占位符（`str.format()` 展开）改成 `#search_docs`（正则 `#(\w+)` 替换展开），工具名→杠杆的映射放在 `TOOL_REGISTRY`，工具名本身只由 `packages/agent/search.py` 的 `TOOL_NAME` 常量定义。
+- **为什么**：
+  - **UI 能力**：prompt 变成 console 里的自由文本后，`#` 可以挂自动补全、把工具引用渲染成能溯源到具体杠杆的 chip。这正是「toolcall 要能在 UI 上显示、并 link 到配置」的实现。
+  - **修 bug**：`str.format()` 遇到用户在自由文本里打的字面 `{` / `}` 会抛 `KeyError`，且崩在跟输入毫无关联的 `plan.run()` 里。正则替换对花括号无感，整类转义问题消失。这跟 [TO-22](trade-offs.md) 不冲突——let-it-fail 是不兜真实错误，不是留一个正常输入就能触发的雷。
+  - **一个工具名贯通三处**：prompt 里的 `#search_docs`、轨迹里 search 节点的 `tool` 字段、golden case 里的 `tool_called.name`。全部引同一个常量，改名时 benchmark 断言会**报错**而不是静默永远 pass。
+- **为什么是 `#` 而不是 `@`**：引起上面那个 bug 的是 `str.format()`，跟符号无关，两个符号都能修掉，所以纯粹是约定选择。`#` 的三种潜在冲突都不成立，实测逐条验过：markdown 标题（`# Rules`）后面有空格不匹配；编号引用（`#1`、`#2`）匹配到但不在注册表里、原样透出；`C#` 这类也原样透出；现有四段 prompt 常量里没有 `#`。「未注册的名字原样透出」这条兜住了所有意外匹配。
+- **代价**：`config_hash` 会因 prompt 常量改写而变。原本打算重新 `init-db`，实现时改成了**不删任何东西**：`seed_baseline()` 改为幂等自愈——发现当前 `BASELINE_V1` 的 hash 不是 active，就把旧的 active 标成 `archived`、把它插进去并激活。理由是「active 版本的 hash 对不上源码里任何 config」正是这个产品要消灭的那种不可见漂移，而删表既解决不了这个问题、又会把已有的对话和评测历史一起带走。
+- **展开范围**：`expand_tools()` 对四个 prompt 杠杆**一律**生效，不只 `plan_prompt`。四个都是 console 里的自由文本，只有一个能用 mention 会变成一条要记住的例外；对不含 mention 的 prompt 它是零成本 no-op。
+- **边界**：当前只有一个工具，补全菜单只有一项。不为了菜单「显得丰富」去改 Step 1 的产品行为加工具（那是 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) §2.4 明确回答过的分叉）。
+
+### TO-27 console 前端同样不上构建链
+
+- **决定**：`/console` 前端沿用 [TO-24](trade-offs.md) 的路子——原生 JS + 手写 CSS，由 FastAPI `StaticFiles` 直接托管，无 Vite / React / 构建步骤。视觉 token 仍照 [TO-18](trade-offs.md)。
+- **为什么**：console 信息密度比 `/chat` 高（版本列表、四个带 `#` 补全的 prompt 编辑器、两个 tab、结果表），但仍在手写能 hold 住的范围内；而「干净容器里零构建步骤跑起来」对交付稳定性的价值，在 console 这种页面更多的场景下**比 Step 1 更大**——构建链一旦在评审机器上装不上，损失更大。
+- **代价**：`#` 自动补全、tab 切换、结果表这些要手写，比用组件库累。接受。
+- **推翻条件**：如果 console 交互复杂到手写明显拖慢进度，退路是 CDN 上的 React（仍无构建链），而不是整套 Vite + shadcn 构建工具。
+
+### TO-28 LLM judge 用 `.env` 里与 chatbot 同一个模型
+
+- **决定**：judge 直接读 `.env` 的 `MODEL` 和 `GEMINI_API_KEY`，与被评测的 chatbot 完全同一个模型和同一个 key，**不给 judge 单独配置模型**。这是 [TO-05](trade-offs.md)「模型不可配」的延伸。
+- **为什么**：省掉第二套模型配置、第二个 key 和「judge 用哪个模型」这个决策。这一步的重心是把评测流程跑通，不是把评测做到可发表的严谨度。
+- **代价**（两条独立的问题，都要在 APPROACH.md 明示，不能含糊成一句「为了简单」）：
+  1. **模型漂移作废历史基线**。judge 模型一换，之前所有 verdict 不可比。生产环境必须把 judge 模型跟被评测模型解耦并独立 pin 住——否则「顺手升级一下 chatbot 模型」会同时把整个历史基线换掉，而且不留痕迹。
+  2. **自我评价偏袒（self-evaluation bias）**。让模型判自己的输出已知会系统性偏松。这是除了 [TO-12](trade-offs.md) 的「会抖」之外，judge 判定不能当 blocking 门禁的**第二个**理由。
+- **缓解**：judge 判定只做 advisory——`BenchResult.passed` 只由确定性检查（fixed observation）决定，**代码上根本不读 `verdicts`**。这样「blocking vs advisory」不只是文档里的说法。
+- **推翻条件**：要做严肃评测就必须换一个不同家族的模型当 judge，并把它的版本号写进 `BenchRun`。
+
+### TO-29 golden case 的问法用探针脚本挑，不靠手写
+
+- **决定**：`covered` 这条 case 的问法不是想出来的，是用两个探针脚本筛出来的：`scripts/probe_scope.py`（只调 plan 节点，判「基线 in scope 且严格版 out of scope」）和 `scripts/probe_stability.py`（重复采样，判 `terminated_by` 稳不稳）。定稿后的问法和筛选理由都写在 `datasets/golden.yaml` 的注释里。
+- **为什么**：Step 2 实现时第一版手写的问法看起来完全符合「概念性、不点名功能」的要求，**结果 `BAD_SCOPE_V2` 三条全 pass——回归从整个数据集旁边走过去了**。一个「全绿但其实什么都没在防」的数据集，比没有数据集更危险，因为它会让人相信自己有防护。这条 case 同时要满足两个互相拉扯的条件（基线稳定通过、严格版必须误拒），靠直觉判断达不到。
+- **为什么用只调单节点的探针，而不是整批重跑**：一个候选问法在 plan 探针下花 2 次请求，跑一整对 case 要 8–12 次。免费额度 15 RPM，这个差别直接决定了「能不能试 7 个候选」还是「只能试 1 个」。
+- **代价**：多了两个脚本，而且 golden case 的问法从此**跟 `BAD_SCOPE_V2` 这个具体配置耦合**了——换一个 regression 配置，`covered` 的问法可能要重挑。这个耦合是显式的（写在 YAML 注释里），不是隐藏的。
+- **副产品**：这件事本身就是产品主张的演示——**用这个 benchmark 工具挑选它自己的测试用例**。值得写进 APPROACH.md 和视频。
+
+### TO-30 引用检查用贪心最长匹配，不按分隔符切分
+
+- **决定**：`cites_real_article` 的判法是「把能找到的真实标题按长度倒序逐个从 `Source:` 行里抠掉，剩余文本必须为空」，而不是按逗号 / `and` 切开逐段查表。
+- **为什么**：真实标题里就带这两个分隔符——`Run, Edit and Share Skills`、`Ray 3.2 Prompting, Outputs & Controls`、`Character and Object Consistency`。切分会把合法标题碎成片段，而片段又因为子串包含**碰巧匹配上**。第一版实跑输出的是 `cited ['Character', 'Object Consistency', ...]`：检查显示绿色，但**它是因为错误的原因而通过的**，跟坏掉没有区别。
+- **代价**：最长匹配是 O(标题数 × 文本长度)，39 篇文章的规模下无所谓；语料大到几千篇要换成 Aho-Corasick。
+- **一般化的教训**：确定性检查的危险失效模式不是「误报」而是**「因为错误的原因通过」**。误报会被人看见，后者不会。所以每写一条检查，都要构造一个应该 fail 的输入去验它真的会 fail——`scripts/check_assertions.py` 存在的理由。
+
 ---
 
 ## 待决
 
-- TO-14 的 XML vs YAML，等你拍板。
+（暂无。TO-14 已定为 YAML。）

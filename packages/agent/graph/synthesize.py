@@ -1,4 +1,4 @@
-from ask_luma import llm
+from agent import llm, tools
 from behavior_core.config import BehaviorConfig
 
 INSUFFICIENT_NOTE = (
@@ -15,6 +15,8 @@ def run(
         f"[{item['article_title']} > {item['heading']}]\n{item['text']}" for item in evidence
     ) or "(no evidence was retrieved)"
 
-    system = config.synthesize_prompt if sufficient else config.synthesize_prompt + INSUFFICIENT_NOTE
+    system = tools.expand_tools(config.synthesize_prompt, config)
+    if not sufficient:
+        system += INSUFFICIENT_NOTE
     user = f"Question: {question}\n\nEvidence:\n{blocks}"
     return llm.call(system, user, config.temperature)

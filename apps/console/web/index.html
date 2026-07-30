@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Driftline · Ask Luma behavior console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+<style>
+  /* Same tokens as /chat (TO-18). One product, two surfaces. */
+  :root {
+    --bg: #faf9f5;
+    --surface: #ffffff;
+    --text: #1f1e1c;
+    --muted: #6b6862;
+    --hairline: #e8e5de;
+    --accent: #c9765a;
+    --pass: #3f7d58;
+    --fail: #b0483a;
+    --radius: 8px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1e1c; --surface: #292826; --text: #f2f0ea;
+      --muted: #a8a49b; --hairline: #3a3835; --accent: #d98c70;
+      --pass: #7fb894; --fail: #e08a7c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em;
+  }
+  h2 {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 17px; font-weight: 600; margin: 0 0 12px;
+  }
+  a { color: var(--accent); }
+
+  .topbar {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 18px 24px; border-bottom: 1px solid var(--hairline); background: var(--surface);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .topbar .sub { color: var(--muted); font-size: 13px; }
+  .topbar .spacer { flex: 1; }
+
+  .layout { display: grid; grid-template-columns: minmax(380px, 40%) 1fr; gap: 0; align-items: start; }
+  @media (max-width: 1080px) { .layout { grid-template-columns: 1fr; } }
+  .pane { padding: 24px; }
+  .pane.left { border-right: 1px solid var(--hairline); }
+  @media (max-width: 1080px) { .pane.left { border-right: 0; border-bottom: 1px solid var(--hairline); } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  }
+  .lever { margin-bottom: 18px; }
+  .lever > label {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .lever .hint { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; }
+
+  textarea, input[type=text], input[type=number], select {
+    width: 100%; font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--hairline); border-radius: 6px; padding: 9px 11px;
+  }
+  textarea { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: 0; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+
+  button {
+    border: 1px solid var(--accent); border-radius: 7px; background: var(--accent);
+    color: #fff; font: inherit; font-weight: 500; font-size: 14px;
+    padding: 8px 15px; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--accent); }
+  button.quiet { background: transparent; color: var(--muted); border-color: var(--hairline); }
+  button:disabled { opacity: .4; cursor: default; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--hairline); margin-bottom: 18px; }
+  .tabs button {
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    color: var(--muted); border-radius: 0; padding: 8px 14px; font-weight: 500;
+  }
+  .tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* The `#` autocomplete. A textarea cannot host inline chips, so the mention is
+     rendered as a chip in the read-only preview below it instead. */
+  .mention-wrap { position: relative; }
+  .menu {
+    position: absolute; z-index: 30; background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 6px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 260px; max-width: 420px;
+  }
+  .menu button {
+    display: block; width: 100%; text-align: left; background: transparent;
+    border: 0; color: var(--text); padding: 7px 9px; border-radius: 4px; font-size: 13px;
+  }
+  .menu button:hover, .menu button.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .menu .name { font-family: var(--mono); color: var(--accent); }
+  .menu .lv { color: var(--muted); font-size: 12px; }
+
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 12px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent); border-radius: 5px; padding: 0 5px; cursor: help;
+    border-bottom: 1px dotted var(--accent);
+  }
+  .expanded {
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+    color: var(--muted); background: var(--bg); border: 1px dashed var(--hairline);
+    border-radius: 6px; padding: 9px 11px; margin-top: 6px;
+  }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px 6px 0; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr.sel td { color: var(--accent); }
+
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .pass { color: var(--pass); font-weight: 600; }
+  .fail { color: var(--fail); font-weight: 600; }
+  .pill {
+    display: inline-block; font-size: 11px; font-family: var(--mono);
+    border: 1px solid var(--hairline); border-radius: 100px; padding: 1px 8px; color: var(--muted);
+  }
+  .pill.on { border-color: var(--accent); color: var(--accent); }
+
+  .case { border: 1px solid var(--hairline); border-radius: var(--radius); margin-bottom: 14px; background: var(--surface); }
+  .case > header {
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    padding: 11px 14px; border-bottom: 1px solid var(--hairline);
+  }
+  .case .body { padding: 14px; }
+  .assert-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 780px) { .assert-cols { grid-template-columns: 1fr; } }
+  .assert-cols h3 {
+    font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 8px; font-weight: 600;
+  }
+  .answer { white-space: pre-wrap; background: var(--bg); border-radius: 6px; padding: 11px 13px; margin: 10px 0; }
+
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  summary:hover { color: var(--accent); }
+  .node { font-family: var(--mono); font-size: 11.5px; padding: 2px 0; }
+  .thinking { color: var(--muted); animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+  .banner {
+    border-left: 2px solid var(--accent); padding: 6px 0 6px 12px;
+    color: var(--muted); font-size: 13px; margin-bottom: 14px;
+  }
+  .diff { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+  .diff ins { background: color-mix(in srgb, var(--pass) 20%, transparent); text-decoration: none; }
+  .diff del { background: color-mix(in srgb, var(--fail) 20%, transparent); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Driftline</h1>
+  <span class="sub" id="env">loading…</span>
+  <span class="spacer"></span>
+  <a class="sub" href="/" target="_blank">open /chat →</a>
+</div>
+
+<div class="layout">
+  <!-- LEFT: the six versioned levers -->
+  <div class="pane left">
+    <div class="card">
+      <h2>Behavior configuration</h2>
+      <div class="small muted" style="margin-bottom:14px">
+        Six levers. Everything else (model, retry policy, search thresholds) is a controlled
+        variable and changing it is a code change.
+      </div>
+
+      <div class="lever">
+        <label for="v-load">Load a version <span class="hint">into the editor as a draft</span></label>
+        <select id="v-load"></select>
+      </div>
+
+      <div id="prompt-levers"></div>
+
+      <div class="row">
+        <div class="lever">
+          <label for="l-temperature">temperature</label>
+          <input id="l-temperature" type="number" step="0.1" min="0" max="2" />
+        </div>
+        <div class="lever">
+          <label for="l-max_loops">max_loops</label>
+          <input id="l-max_loops" type="number" step="1" min="1" max="6" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <input id="v-label" type="text" placeholder="new version label" style="flex:1;min-width:150px" />
+        <button id="v-save" class="ghost">Save as version</button>
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        draft hash <span class="mono" id="draft-hash">—</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Versions</h2>
+      <table>
+        <thead><tr><th>label</th><th>status</th><th>hash</th><th>diff</th><th></th></tr></thead>
+        <tbody id="v-rows"></tbody>
+      </table>
+      <div id="v-diff"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: playground -->
+  <div class="pane">
+    <div class="tabs" role="tablist">
+      <button id="tab-conv" role="tab" aria-selected="true">Conversation</button>
+      <button id="tab-sim" role="tab" aria-selected="false">Simulation</button>
+    </div>
+
+    <section id="panel-conv">
+      <div class="banner">
+        One turn with the draft config, nothing written to the Conversation table &mdash; that
+        table means real traffic. Everything is expanded by default; this is the debugging
+        surface, not the product one.
+      </div>
+      <div class="actions" style="margin-bottom:14px">
+        <input id="c-q" type="text" style="flex:1" placeholder="Ask something with the draft config…" />
+        <button id="c-run">Run</button>
+      </div>
+      <div id="c-out"></div>
+    </section>
+
+    <section id="panel-sim" hidden>
+      <div class="banner">
+        Three golden cases against the draft config. <strong>Fixed observations</strong> are checked
+        mechanically and are blocking. <strong>Dynamic expectations</strong> are judged by an LLM,
+        single sample, and never affect pass/fail.
+      </div>
+      <div class="actions" style="margin-bottom:14px">
+        <button id="s-run">Run simulation</button>
+        <select id="s-history" style="flex:1"></select>
+        <span class="small muted" id="s-status"></span>
+      </div>
+      <div id="s-out"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const API = "/api/console";
+const PROMPT_LEVERS = [
+  ["plan_prompt", "scope guard, search decision, first query"],
+  ["reflect_prompt", "is the evidence enough?"],
+  ["synthesize_prompt", "writes the answer"],
+  ["tool_description", "what #search_docs expands to"],
+];
+const NUMBER_LEVERS = ["temperature", "max_loops"];
+const LEVERS = [...PROMPT_LEVERS.map(([k]) => k), ...NUMBER_LEVERS];
+
+let versions = [];
+let tools = [];
+let dataset = null;
+let poll = null;
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = text;
+  return n;
+};
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+async function api(path, options) {
+  const response = await fetch(API + path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || response.statusText);
+  return data;
+}
+
+// ---------- editor ----------
+
+for (const [key, hint] of PROMPT_LEVERS) {
+  const wrap = el("div", "lever mention-wrap");
+  const label = el("label");
+  label.htmlFor = "l-" + key;
+  label.append(el("span", null, key), el("span", "hint", hint));
+  const area = el("textarea");
+  area.id = "l-" + key;
+  area.rows = key === "tool_description" ? 3 : 11;
+  wrap.append(label, area, mentionPreview(key));
+  $("prompt-levers").appendChild(wrap);
+  attachMentionMenu(area, wrap);
+  area.addEventListener("input", onDraftChange);
+}
+for (const key of NUMBER_LEVERS) $("l-" + key).addEventListener("input", onDraftChange);
+
+function mentionPreview(key) {
+  const box = el("div", "expanded");
+  box.id = "x-" + key;
+  box.hidden = true;
+  return box;
+}
+
+function draft() {
+  const config = {};
+  for (const key of PROMPT_LEVERS.map(([k]) => k)) config[key] = $("l-" + key).value;
+  config.temperature = parseFloat($("l-temperature").value);
+  config.max_loops = parseInt($("l-max_loops").value, 10);
+  return config;
+}
+
+function loadDraft(config) {
+  for (const key of LEVERS) $("l-" + key).value = config[key];
+  onDraftChange();
+}
+
+function onDraftChange() {
+  for (const [key] of PROMPT_LEVERS) {
+    if (key === "tool_description") continue;
+    const box = $("x-" + key);
+    const text = $("l-" + key).value;
+    const found = tools.filter((t) => new RegExp("#" + t.name + "\\b").test(text));
+    if (!found.length) { box.hidden = true; continue; }
+    box.hidden = false;
+    // The chip and its expansion. This is the "toolcall visible in the UI and
+    // linked back to the config" requirement: the prompt stays free text, but a
+    // tool reference is an entity you can see and trace to the lever behind it.
+    box.innerHTML = found
+      .map((t) => {
+        const value = $("l-" + t.lever)?.value ?? t.expands_to;
+        return `<span class="chip" title="lever: ${esc(t.lever)}">#${esc(t.name)}</span> → ${esc(value)}`;
+      })
+      .join("\n");
+  }
+  $("draft-hash").textContent = "changed, run to see";
+}
+
+// Autocomplete on `#`. Deliberately one sigil and one regex: the point is that
+// nobody has to memorise the syntax, and a typo shows up immediately.
+function attachMentionMenu(area, wrap) {
+  let menu = null;
+  let index = 0;
+
+  const close = () => { menu?.remove(); menu = null; };
+
+  const insert = (name) => {
+    const upto = area.value.slice(0, area.selectionStart);
+    const match = upto.match(/#(\w*)$/);
+    if (!match) return close();
+    const start = area.selectionStart - match[0].length;
+    const after = area.value.slice(area.selectionStart);
+    area.value = area.value.slice(0, start) + "#" + name + after;
+    const caret = start + name.length + 1;
+    area.setSelectionRange(caret, caret);
+    close();
+    onDraftChange();
+    area.focus();
+  };
+
+  const render = (matches) => {
+    close();
+    if (!matches.length) return;
+    menu = el("div", "menu");
+    matches.forEach((t, i) => {
+      const button = el("button");
+      button.type = "button";
+      if (i === index) button.classList.add("on");
+      button.innerHTML = `<span class="name">#${esc(t.name)}</span> <span class="lv">— ${esc(t.lever)}</span>`;
+      button.addEventListener("mousedown", (e) => { e.preventDefault(); insert(t.name); });
+      menu.appendChild(button);
+    });
+    wrap.appendChild(menu);
+    menu.style.top = area.offsetTop + area.offsetHeight - 4 + "px";
+    menu.style.left = "8px";
+  };
+
+  const current = () => {
+    const upto = area.value.slice(0, area.selectionStart);
+    const match = upto.match(/#(\w*)$/);
+    if (!match) return null;
+    const term = match[1].toLowerCase();
+    return tools.filter((t) => t.name.toLowerCase().startsWith(term));
+  };
+
+  area.addEventListener("input", () => {
+    const matches = current();
+    index = 0;
+    matches ? render(matches) : close();
+  });
+  area.addEventListener("keydown", (e) => {
+    if (!menu) return;
+    const matches = current() || [];
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      index = (index + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length;
+      render(matches);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      insert(matches[index].name);
+    } else if (e.key === "Escape") {
+      close();
+    }
+  });
+  area.addEventListener("blur", () => setTimeout(close, 120));
+}
+
+// ---------- versions ----------
+
+async function refreshVersions() {
+  versions = await api("/versions");
+  const rows = $("v-rows");
+  rows.replaceChildren();
+  for (const v of versions) {
+    const tr = el("tr");
+    tr.append(
+      el("td", null, v.label),
+      el("td", v.status === "active" ? "pass" : "muted", v.status),
+      el("td", "mono muted", v.config_hash),
+    );
+
+    const diffCell = el("td");
+    const box = el("input");
+    box.type = "checkbox";
+    box.dataset.id = v.id;
+    box.addEventListener("change", renderDiff);
+    diffCell.appendChild(box);
+    tr.appendChild(diffCell);
+
+    const actions = el("td", "actions");
+    const load = el("button", "quiet", "load");
+    load.addEventListener("click", () => loadDraft(v.config));
+    actions.appendChild(load);
+    if (v.status !== "active") {
+      const go = el("button", "ghost", "activate");
+      go.addEventListener("click", () => activate(v));
+      actions.appendChild(go);
+    }
+    tr.appendChild(actions);
+    rows.appendChild(tr);
+  }
+
+  const select = $("v-load");
+  select.replaceChildren(el("option", null, "— pick a version —"));
+  for (const v of versions) {
+    const option = el("option", null, `${v.label} · ${v.status} · ${v.config_hash}`);
+    option.value = v.id;
+    select.appendChild(option);
+  }
+}
+
+$("v-load").addEventListener("change", (e) => {
+  const v = versions.find((x) => x.id === e.target.value);
+  if (v) loadDraft(v.config);
+});
+
+$("v-save").addEventListener("click", async () => {
+  const label = $("v-label").value.trim();
+  if (!label) return alert("give the version a label");
+  await api("/versions", {
+    method: "POST",
+    body: JSON.stringify({ config: draft(), label, note: "saved from console" }),
+  });
+  $("v-label").value = "";
+  await refreshVersions();
+});
+
+async function activate(v) {
+  if (!confirm(`Send 100% of /chat traffic to ${v.label} (${v.config_hash})?`)) return;
+  await api(`/versions/${v.id}/activate`, { method: "POST" });
+  await Promise.all([refreshVersions(), refreshEnv()]);
+}
+
+// Version diff. Not asked for, but "evaluate and manage changes" needs a way to
+// see what actually changed, and a word-level diff of six fields is cheap.
+function renderDiff() {
+  const picked = [...document.querySelectorAll("#v-rows input:checked")].map((b) => b.dataset.id);
+  const out = $("v-diff");
+  out.replaceChildren();
+  if (picked.length !== 2) {
+    if (picked.length) out.appendChild(el("div", "small muted", "tick two versions to diff"));
+    return;
+  }
+  const [a, b] = picked.map((id) => versions.find((v) => v.id === id));
+  out.appendChild(el("div", "small muted", `${a.label} ${a.config_hash} → ${b.label} ${b.config_hash}`));
+  let same = true;
+  for (const key of LEVERS) {
+    if (String(a.config[key]) === String(b.config[key])) continue;
+    same = false;
+    out.appendChild(el("div", "small", key));
+    const box = el("div", "diff");
+    box.innerHTML = wordDiff(String(a.config[key]), String(b.config[key]));
+    out.appendChild(box);
+  }
+  if (same) out.appendChild(el("div", "small muted", "identical on all six levers"));
+}
+
+// Longest-common-subsequence word diff. Small enough to hand-write, and the
+// alternative is a build chain (TO-27).
+function wordDiff(a, b) {
+  const x = a.split(/(\s+)/), y = b.split(/(\s+)/);
+  const table = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--)
+    for (let j = y.length - 1; j >= 0; j--)
+      table[i][j] = x[i] === y[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+
+  let out = "", i = 0, j = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { out += esc(x[i]); i++; j++; }
+    else if (table[i + 1][j] >= table[i][j + 1]) { out += `<del>${esc(x[i])}</del>`; i++; }
+    else { out += `<ins>${esc(y[j])}</ins>`; j++; }
+  }
+  out += `<del>${esc(x.slice(i).join(""))}</del><ins>${esc(y.slice(j).join(""))}</ins>`;
+  return out.replace(/<del><\/del>|<ins><\/ins>/g, "");
+}
+
+// ---------- tabs ----------
+
+for (const [tab, panel, other, otherPanel] of [
+  ["tab-conv", "panel-conv", "tab-sim", "panel-sim"],
+  ["tab-sim", "panel-sim", "tab-conv", "panel-conv"],
+]) {
+  $(tab).addEventListener("click", () => {
+    $(tab).setAttribute("aria-selected", "true");
+    $(other).setAttribute("aria-selected", "false");
+    $(panel).hidden = false;
+    $(otherPanel).hidden = true;
+  });
+}
+
+// ---------- conversation ----------
+
+$("c-run").addEventListener("click", runConversation);
+$("c-q").addEventListener("keydown", (e) => { if (e.key === "Enter") runConversation(); });
+
+async function runConversation() {
+  const question = $("c-q").value.trim();
+  if (!question) return;
+  const out = $("c-out");
+  out.replaceChildren(el("div", "thinking", "Thinking…"));
+  $("c-run").disabled = true;
+  try {
+    const data = await api("/playground/chat", {
+      method: "POST",
+      body: JSON.stringify({ config: draft(), question }),
+    });
+    $("draft-hash").textContent = data.config_hash;
+    out.replaceChildren(conversationView(question, data));
+  } catch (err) {
+    out.replaceChildren(el("div", "fail", "failed: " + err.message));
+  } finally {
+    $("c-run").disabled = false;
+  }
+}
+
+function conversationView(question, data) {
+  const box = el("div", "case");
+  const head = el("header");
+  head.append(
+    el("strong", null, data.terminated_by),
+    el("span", "pill", `${data.loop_count} search round(s)`),
+    el("span", "pill", `${data.llm_call_count} model call(s)`),
+    el("span", "pill", `${data.latency_ms}ms`),
+    el("span", "pill", `$${data.cost_usd.toFixed(6)}`),
+    el("span", "pill", `${data.tokens_in}/${data.tokens_out} tok`),
+  );
+  box.appendChild(head);
+
+  const body = el("div", "body");
+  body.append(el("div", "small muted", question), el("div", "answer", data.answer || "(empty)"));
+  if (data.citations?.length) {
+    body.appendChild(el("div", "small muted", "cites: " + data.citations.map((c) => c.title).join(" · ")));
+  }
+  body.appendChild(trajectoryView(data.trajectory));
+  body.appendChild(collapsible("Expanded prompts (after # substitution)", () => {
+    const wrap = el("div");
+    for (const [node, text] of Object.entries(data.expanded_prompts)) {
+      wrap.append(el("div", "small muted", node), el("div", "expanded", text));
+    }
+    return wrap;
+  }));
+  body.appendChild(collapsible(`Evidence the model saw (${data.evidence.length} chunk(s))`, () => {
+    const wrap = el("div");
+    for (const item of data.evidence) {
+      wrap.append(
+        el("div", "small", `${item.article_title} › ${item.heading}`),
+        el("div", "expanded", item.text),
+      );
+    }
+    return wrap.children.length ? wrap : el("div", "small muted", "nothing retrieved");
+  }));
+  box.appendChild(body);
+  return box;
+}
+
+function trajectoryView(trajectory) {
+  return collapsible("Trajectory, node by node", () => {
+    const wrap = el("div");
+    for (const step of trajectory) {
+      const { node, ...rest } = step;
+      const parts = Object.entries(rest)
+        .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length))
+        .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(" | ") : v}`);
+      wrap.appendChild(el("div", "node", `${node}  ${parts.join("  ")}`));
+    }
+    return wrap;
+  }, true);
+}
+
+function collapsible(title, build, open = false) {
+  const details = el("details");
+  details.open = open;
+  details.appendChild(el("summary", null, title));
+  details.appendChild(build());
+  return details;
+}
+
+// ---------- simulation ----------
+
+$("s-run").addEventListener("click", async () => {
+  $("s-run").disabled = true;
+  $("s-status").textContent = "starting…";
+  try {
+    const { run_id } = await api("/simulate", {
+      method: "POST",
+      body: JSON.stringify({ config: draft(), version_label: "draft" }),
+    });
+    watchRun(run_id);
+  } catch (err) {
+    $("s-status").textContent = "failed: " + err.message;
+    $("s-run").disabled = false;
+  }
+});
+
+$("s-history").addEventListener("change", (e) => { if (e.target.value) watchRun(e.target.value); });
+
+// Polling, not SSE. A run writes one row per case as it finishes, so polling gets
+// per-case progress for free (TO-17 took the same view of /chat).
+function watchRun(runId) {
+  clearInterval(poll);
+  const tick = async () => {
+    const data = await api(`/runs/${runId}`);
+    renderRun(data);
+    if (data.run.status !== "running") {
+      clearInterval(poll);
+      $("s-run").disabled = false;
+      refreshRuns();
+    }
+  };
+  tick();
+  poll = setInterval(tick, 2500);
+}
+
+function renderRun(data) {
+  const { run, results } = data;
+  const done = results.length;
+  const passed = results.filter((r) => r.passed).length;
+  $("s-status").textContent =
+    run.status === "running"
+      ? `running… ${done}/${run.case_total} cases`
+      : `${passed}/${done} passed  ·  $${run.total_cost_usd.toFixed(6)}`;
+
+  const out = $("s-out");
+  out.replaceChildren();
+  out.appendChild(
+    el(
+      "div",
+      "small muted",
+      `config ${run.config_hash} · dataset ${run.dataset_hash} · corpus ${run.corpus_hash} · judge model ${run.model}` +
+        `  ·  n=1 per case, statistically weak by design`,
+    ),
+  );
+  if (run.status === "running" && done < run.case_total) {
+    out.appendChild(el("div", "thinking", "serial and throttled to stay inside 15 requests/minute…"));
+  }
+  for (const result of results) out.appendChild(caseView(result));
+}
+
+function caseView(result) {
+  const box = el("div", "case");
+  const head = el("header");
+  head.append(
+    el("span", result.passed ? "pass" : "fail", result.passed ? "PASS" : "FAIL"),
+    el("strong", null, result.case_id),
+    el("span", "pill", "persona: " + result.persona),
+  );
+  for (const policy of [...new Set(result.expectations.map((e) => e.policy))]) {
+    head.appendChild(el("span", "pill", policy));
+  }
+  if (result.cached) head.appendChild(el("span", "pill on", "cached · $0"));
+  head.append(el("span", "pill", `${result.latency_ms}ms`), el("span", "pill", `$${result.cost_usd.toFixed(6)}`));
+  box.appendChild(head);
+
+  const body = el("div", "body");
+  if (result.error) {
+    body.append(
+      el("div", "fail", "this case blew up; the batch continued"),
+      el("div", "expanded", result.error),
+    );
+    box.appendChild(body);
+    return box;
+  }
+
+  body.append(
+    el("div", "small muted", result.persona_note),
+    el("div", "small", result.question),
+    el("div", "answer", result.answer || "(empty)"),
+  );
+
+  const cols = el("div", "assert-cols");
+
+  const fixed = el("div");
+  fixed.appendChild(el("h3", null, "Fixed observations · blocking"));
+  for (const [name, check] of Object.entries(result.observations)) {
+    const row = el("div", "small");
+    row.append(
+      el("span", check.passed ? "pass" : "fail", check.passed ? "✓ " : "✗ "),
+      el("span", "mono", name),
+      el("span", "muted", " " + check.detail),
+    );
+    fixed.appendChild(row);
+  }
+  cols.appendChild(fixed);
+
+  const dynamic = el("div");
+  dynamic.appendChild(el("h3", null, "Dynamic expectations · advisory, single sample"));
+  if (!result.verdicts.length) dynamic.appendChild(el("div", "small muted", "none"));
+  for (const verdict of result.verdicts) {
+    const row = el("div", "small");
+    row.style.marginBottom = "8px";
+    const ok = verdict.verdict === "pass";
+    row.append(
+      el("span", ok ? "pass" : "fail", ok ? "✓ " : "✗ "),
+      el("span", "mono", verdict.policy),
+      el("div", "muted", verdict.expect),
+      el("div", null, verdict.reason),
+    );
+    dynamic.appendChild(row);
+  }
+  cols.appendChild(dynamic);
+  body.appendChild(cols);
+  body.appendChild(trajectoryView(result.trajectory));
+  box.appendChild(body);
+  return box;
+}
+
+// Shown before any run exists. Without it the tab opens empty, and a reader has
+// no way to know what the three cases even are before spending 80 seconds.
+function renderDatasetPreview() {
+  const out = $("s-out");
+  out.replaceChildren(
+    el("div", "small muted", `dataset ${dataset.hash} · ${dataset.cases.length} cases · not run yet`),
+  );
+  for (const c of dataset.cases) {
+    const box = el("div", "case");
+    const head = el("header");
+    head.append(el("strong", null, c.id), el("span", "pill", "persona: " + c.persona));
+    for (const policy of [...new Set(c.expectations.map((e) => e.policy))]) {
+      head.appendChild(el("span", "pill", policy));
+    }
+    box.appendChild(head);
+
+    const body = el("div", "body");
+    body.append(el("div", "small muted", c.persona_note), el("div", "small", c.question));
+    const cols = el("div", "assert-cols");
+
+    const fixed = el("div");
+    fixed.appendChild(el("h3", null, "Fixed observations · blocking"));
+    for (const [name, spec] of Object.entries(c.observations)) {
+      fixed.appendChild(el("div", "small mono", `${name} = ${JSON.stringify(spec)}`));
+    }
+    cols.appendChild(fixed);
+
+    const dynamic = el("div");
+    dynamic.appendChild(el("h3", null, "Dynamic expectations · advisory"));
+    for (const e of c.expectations) {
+      const row = el("div", "small");
+      row.append(el("span", "mono", e.policy + " "), el("span", "muted", e.expect));
+      dynamic.appendChild(row);
+    }
+    cols.appendChild(dynamic);
+
+    body.appendChild(cols);
+    box.appendChild(body);
+    out.appendChild(box);
+  }
+}
+
+async function refreshRuns() {
+  const runs = await api("/runs");
+  const select = $("s-history");
+  const keep = select.value;
+  select.replaceChildren(el("option", null, "— past runs —"));
+  for (const run of runs) {
+    const when = new Date(run.started_at).toLocaleTimeString();
+    const option = el("option", null, `${when} · ${run.version_label} · ${run.config_hash} · ${run.status}`);
+    option.value = run.id;
+    select.appendChild(option);
+  }
+  select.value = keep;
+}
+
+// ---------- boot ----------
+
+async function refreshEnv() {
+  const health = await api("/health");
+  $("env").textContent =
+    `model ${health.model} · corpus ${health.corpus_hash} · dataset ${health.dataset_hash} · ` +
+    `${health.case_count} golden cases · tools: ${health.tool_registry.join(", ")}`;
+}
+
+(async () => {
+  [tools, dataset] = await Promise.all([api("/tools"), api("/dataset")]);
+  await Promise.all([refreshVersions(), refreshRuns(), refreshEnv()]);
+  renderDatasetPreview();
+  const active = versions.find((v) => v.status === "active") || versions[0];
+  if (active) loadDraft(active.config);
+})();
+</script>
+</body>
+</html>

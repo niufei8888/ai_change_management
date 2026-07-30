@@ -9,8 +9,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from ask_luma import llm, search
-from ask_luma.graph import plan, reflect, synthesize
+from agent import llm, search
+from agent.graph import plan, reflect, synthesize
 from behavior_core.config import BehaviorConfig
 
 
@@ -20,6 +20,10 @@ class Outcome:
     citations: list[dict[str, str]] = field(default_factory=list)
     trajectory: list[dict[str, Any]] = field(default_factory=list)
     retrieved_articles: list[str] = field(default_factory=list)
+    # The actual chunks the synthesize node saw. The trajectory records that a
+    # search happened and what it hit; grounding can only be judged against the
+    # text itself, so the evidence has to leave the loop with the answer.
+    evidence: list[dict[str, str]] = field(default_factory=list)
     terminated_by: str = ""
     loop_count: int = 0
     llm_call_count: int = 0
@@ -82,9 +86,13 @@ def run(question: str, config: BehaviorConfig) -> Outcome:
         seen_chunks.update((h["slug"], h["heading"]) for h in fresh)
         evidence.extend(fresh)
 
+        # `tool` is what the benchmark asserts on, and it is the same constant the
+        # prompt's `#search_docs` reference resolves through. Reading the node
+        # name instead would keep passing after a rename.
         outcome.trajectory.append(
             {
                 "node": "search",
+                "tool": search.TOOL_NAME,
                 "query": query,
                 "hits": len(hits),
                 "new_hits": len(fresh),
@@ -123,6 +131,7 @@ def run(question: str, config: BehaviorConfig) -> Outcome:
     outcome.answer = answer.strip()
     outcome.terminated_by = "answered" if sufficient else "exhausted"
     outcome.retrieved_articles = sorted({item["article_title"] for item in evidence})
+    outcome.evidence = evidence
     outcome.citations = _cited(answer, evidence)
     return _finish(outcome, started)
 

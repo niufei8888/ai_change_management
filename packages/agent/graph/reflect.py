@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from ask_luma import llm
+from agent import llm, tools
 from behavior_core.config import BehaviorConfig
 
 
@@ -28,4 +28,5 @@ def run(
         f"Queries already tried: {', '.join(tried)}\n\n"
         f"Evidence:\n{blocks}"
     )
-    return llm.call_structured(config.reflect_prompt, user, config.temperature, Reflection)
+    system = tools.expand_tools(config.reflect_prompt, config)
+    return llm.call_structured(system, user, config.temperature, Reflection)

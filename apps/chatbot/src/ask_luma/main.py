@@ -12,8 +12,8 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from sqlmodel import desc, select  # noqa: E402
 
-from ask_luma import corpus, llm  # noqa: E402
-from ask_luma.graph import runner  # noqa: E402
+from agent import corpus, llm  # noqa: E402
+from agent.graph import runner  # noqa: E402
 from behavior_core import config_client  # noqa: E402
 from behavior_core.db import get_session, init_db  # noqa: E402
 from behavior_core.models import Conversation  # noqa: E402

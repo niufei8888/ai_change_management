@@ -13,15 +13,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from ask_luma import corpus, llm, search  # noqa: E402
-from ask_luma.graph import runner  # noqa: E402
+from agent import corpus, llm, search  # noqa: E402
+from agent.graph import runner  # noqa: E402
 from behavior_core import config_client  # noqa: E402
+from behavior_core.config import BASELINE_V1  # noqa: E402
 from behavior_core.db import init_db  # noqa: E402
 
 
 def cmd_init_db() -> None:
     init_db()
-    print("tables created, v1-baseline seeded")
+    config_client.invalidate()
+    print(f"tables created, v1-baseline active at {BASELINE_V1.config_hash()}")
 
 
 def cmd_search(query: str) -> None:

@@ -146,6 +146,8 @@ flowchart LR
 
 `tool_description` 仍然是被版本化的杠杆，只是它现在被注入进 `plan` / `reflect` 的 prompt 上下文，形式是「你有一个文档检索工具，它的能力是：`{tool_description}`」。
 
+> Step 2 把这个 `str.format()` 占位符换成了 `#search_docs` mention 语法——prompt 一旦变成 console 里的自由文本，字面的花括号就会让 `str.format()` 抛 `KeyError`。理由和实现见 [design_step2_console_with_benchmark.md](design_step2_console_with_benchmark.md) §2 与 [TO-26](trade-offs.md)。
+
 **为什么这样选**（完整理由见 [TO-20](trade-offs.md)）：
 
 1. **能用结构化输出。** Gemini 的 `responseSchema` 和 function calling 一般不能在同一次调用里同时使用。既然我们要用 schema 消除格式幻觉（见 5.7），就不能再用原生工具调用。
@@ -713,7 +715,7 @@ aicoding/                              # 仓库根
 │  ├─ question.md                      # 原题
 │  ├─ design_high_level.md             # 总设计
 │  ├─ design_step1_ai_app.md           # 本文件
-│  ├─ design_step2_eval_system.md      # 待写
+│  ├─ design_step2_console_with_benchmark.md
 │  ├─ trade-offs.md                    # 活文档，随时追加
 │  └─ discussion.md                    # 早期讨论，已被总设计取代，留存备查
 │

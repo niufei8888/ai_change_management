@@ -75,3 +75,52 @@ class Conversation(SQLModel, table=True):
     tokens_in: int = 0
     tokens_out: int = 0
     created_at: datetime = Field(default_factory=_now)
+
+
+class BenchRun(SQLModel, table=True):
+    """One Simulation pass over the golden dataset with one behavior config."""
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    # The three halves of the cache key. A config change, a dataset edit or a
+    # corpus refetch all invalidate previous results, and all three are cheap to
+    # compare, so none of them gets to be implicit.
+    config_hash: str = Field(index=True)
+    dataset_hash: str
+    corpus_hash: str
+    # The whole config inline rather than a version_id, because Simulation runs
+    # drafts and a draft has no Version row (see design step 2 §3.1).
+    config: dict[str, Any] = Field(sa_column=Column(JSON))
+    version_label: str = "draft"
+    status: str = "running"  # running | done | error
+    total_cost_usd: float = 0.0
+    started_at: datetime = Field(default_factory=_now)
+    finished_at: datetime | None = None
+
+
+class BenchResult(SQLModel, table=True):
+    """One golden case under one config.
+
+    `passed` deliberately ignores `verdicts`. Judge output is non-deterministic
+    (TO-12) and, because the judge is the same model being evaluated, it is also
+    systematically lenient (TO-28) -- a signal like that must not be able to turn
+    a run green. Keeping it out of `passed` is what makes "blocking vs advisory"
+    true in the code and not just in the design doc.
+    """
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    run_id: str = Field(index=True)
+    case_id: str = Field(index=True)
+    persona: str = ""
+    question: str = Field(sa_column=Column(Text))
+    answer: str = Field(default="", sa_column=Column(Text))
+    trajectory: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    evidence: list[dict[str, str]] = Field(default_factory=list, sa_column=Column(JSON))
+    terminated_by: str = ""
+    observations: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    verdicts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    passed: bool = False
+    cached: bool = False  # copied from an earlier run; costs nothing, proves the cache works
+    error: str | None = None  # this case blew up; the batch keeps going
+    latency_ms: int = 0
+    cost_usd: float = 0.0
+    created_at: datetime = Field(default_factory=_now)

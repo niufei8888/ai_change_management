@@ -13,13 +13,32 @@ dependencies = [
     "httpx>=0.28",
     "beautifulsoup4>=4.12",
     "markdownify>=0.14",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# One venv for the whole monorepo. Both packages are installed editable so the
-# directory boundary between them stays real without three dependency files.
+# One venv for the whole monorepo. Every package is installed editable so the
+# directory boundary between them stays real without four dependency files.
+# apps/console cannot import apps/chatbot because there is nothing in ask_luma to
+# import: the shared kernel is agent, and both apps depend on it downward.
+#
+# sources is written out rather than relying on the `packages` shorthand: with
+# four source roots hatchling's inference collapses them to a common parent and
+# the editable install stops resolving.
 [tool.hatch.build.targets.wheel]
-packages = ["packages/behavior_core", "apps/chatbot/src/ask_luma"]
+only-include = [
+    "packages/behavior_core",
+    "packages/agent",
+    "apps/chatbot/src/ask_luma",
+    "apps/console/src/driftline",
+    "apps/server/src/server",
+]
+
+[tool.hatch.build.targets.wheel.sources]
+"packages" = ""
+"apps/chatbot/src" = ""
+"apps/console/src" = ""
+"apps/server/src" = ""

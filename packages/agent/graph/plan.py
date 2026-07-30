@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from ask_luma import llm
+from agent import llm, tools
 from behavior_core.config import BehaviorConfig
 
 
@@ -21,5 +21,5 @@ def run(question: str, config: BehaviorConfig) -> tuple[Plan, llm.LLMResult]:
     could never stop retrieval happening, and the regression that whole demo
     rests on would be impossible to produce.
     """
-    system = config.plan_prompt.format(tool_description=config.tool_description)
+    system = tools.expand_tools(config.plan_prompt, config)
     return llm.call_structured(system, question, config.temperature, Plan)

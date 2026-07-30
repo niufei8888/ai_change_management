@@ -24,11 +24,16 @@ class BehaviorConfig(BaseModel):
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
+# `#search_docs` is a mention, expanded by agent.tools.expand_tools() into whatever
+# the tool_description lever currently says. It replaced a {tool_description}
+# str.format() placeholder: once prompts are editable free text in the console, a
+# literal brace typed by an author crashes the chatbot several layers away from
+# the edit. See trade-offs.md TO-26.
 PLAN_PROMPT_V1 = """You are the planner for Ask Luma, an assistant that answers questions about \
 Luma AI products using ONLY the official Luma Learning Center documentation.
 
 You have one tool available:
-{tool_description}
+#search_docs
 
 Decide three things:
 1. in_scope - Is this question about Luma products, features, models, pricing, or creative
@@ -90,7 +95,7 @@ PLAN_PROMPT_V2_STRICT = """You are the planner for Ask Luma, an assistant that a
 about Luma AI products using ONLY the official Luma Learning Center documentation.
 
 You have one tool available:
-{tool_description}
+#search_docs
 
 Decide three things:
 1. in_scope - Be strict. Only questions naming a specific Luma product, model or feature are

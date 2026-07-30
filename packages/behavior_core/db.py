@@ -33,20 +33,39 @@ def init_db() -> None:
 
 
 def seed_baseline() -> None:
+    """Make sure the code's BASELINE_V1 exists in the table and is the active one.
+
+    Idempotent and additive: nothing is ever deleted. It re-seeds rather than
+    early-returning on "some version exists" because editing a prompt constant
+    changes config_hash, and an active row whose hash matches no config in the
+    source is the exact kind of invisible drift this product exists to remove.
+    Older rows stay as archived history.
+    """
     from sqlmodel import select
 
     from behavior_core.models import Version
 
+    wanted = BASELINE_V1.config_hash()
     with get_session() as session:
-        if session.exec(select(Version)).first():
+        rows = session.exec(select(Version)).all()
+        existing = next((row for row in rows if row.config_hash == wanted), None)
+        if existing is not None and existing.status == "active":
             return
-        session.add(
-            Version(
-                label="v1-baseline",
-                config_hash=BASELINE_V1.config_hash(),
-                config=BASELINE_V1.model_dump(),
-                status="active",
-                note="Initial baseline",
+
+        for row in rows:
+            if row.status == "active":
+                row.status = "archived"
+
+        if existing is not None:
+            existing.status = "active"
+        else:
+            session.add(
+                Version(
+                    label="v1-baseline",
+                    config_hash=wanted,
+                    config=BASELINE_V1.model_dump(),
+                    status="active",
+                    note="Seeded from BASELINE_V1 in packages/behavior_core/config.py",
+                )
             )
-        )
         session.commit()

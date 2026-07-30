@@ -17,7 +17,10 @@ RUN uv sync --frozen --no-dev
 # running container must never need to reach lumalabs.ai.
 COPY corpus/ corpus/
 COPY scripts/ scripts/
+COPY datasets/ datasets/
 
 ENV DB_PATH=/app/data/app.db
 EXPOSE 8000
-CMD ["uvicorn", "ask_luma.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# server.main is the only module that imports both apps: chatbot at /, console at
+# /console, one process so the console's cache invalidation reaches the chatbot.
+CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -4,7 +4,9 @@
 
 设计文档：[ai-discussion/design_step1_ai_app.md](../../ai-discussion/design_step1_ai_app.md)
 
-这个服务是被管理的对象。管理它的变更安全系统在 `apps/console/`（Step 2，尚未实现）。**本服务不依赖 `apps/console`**，两者只通过 `packages/behavior_core` 共享契约。
+这个服务是被管理的对象。管理它的变更安全系统在 [`apps/console/`](../console/README.md)（Driftline）。**本服务不依赖 `apps/console`**，两者共同依赖 `packages/agent`（同一个 ReAct 内核）和 `packages/behavior_core`（配置与表）。
+
+ReAct 内核在 `packages/agent`，不在这个文件夹里——因为 console 跑 benchmark 必须用 chatbot 服务用户时跑的**同一份代码**，内核放在 chatbot 里就得让 console import chatbot，那会让控制面依赖服务面。
 
 所有命令都在**仓库根目录**执行，不是这个文件夹。整个 monorepo 只有根上一份 `pyproject.toml` 和一个 `.venv`。
 
@@ -40,11 +42,18 @@ uv run python scripts/fetch_corpus.py --force    # 全部重抓
 uv sync                                  # 建 .venv 并装依赖
 cp .env.example .env                     # 然后填 GEMINI_API_KEY
 
-uv run python -m ask_luma.cli init-db    # 建表 + 写入 v1 baseline 版本
+uv run python -m ask_luma.cli init-db    # 建表 + 把当前 BASELINE_V1 设为 active
+
+# 只跑 chatbot
 uv run uvicorn ask_luma.main:app --reload --port 8000
+
+# chatbot + console 同一个进程（推荐，见 apps/console/README.md）
+uv run uvicorn server.main:app --reload --port 8000
 ```
 
-打开 http://localhost:8000
+打开 http://localhost:8000 （console 在 http://localhost:8000/console ）
+
+`init-db` 是**幂等自愈**的：它保证代码里 `BASELINE_V1` 的 `config_hash` 就是数据库里 active 的那一个。改了 `config.py` 里的 prompt 常量之后重跑它即可——旧版本会被标成 `archived` 而不是删掉。「active 版本的 hash 对不上源码里任何 config」正是这个项目要消灭的那类不可见漂移。
 
 改前端直接改 `apps/chatbot/web/index.html` 然后刷新浏览器就行。视觉 token 是文件顶部那段 `:root` CSS 变量，风格参照 Anthropic Claude：暖白纸感背景、衬线标题配无衬线正文、陶土橙作唯一强调色，自动跟随系统深色模式。
 
@@ -63,7 +72,7 @@ uv run python -m ask_luma.cli search "share a skill with teammates"
 uv run python -m ask_luma.cli models
 
 # 逐节点详细日志
-LOG_LEVEL=debug uv run uvicorn ask_luma.main:app --reload --port 8000
+LOG_LEVEL=debug uv run uvicorn server.main:app --reload --port 8000
 ```
 
 ### 唯一的测试
@@ -72,7 +81,7 @@ LOG_LEVEL=debug uv run uvicorn ask_luma.main:app --reload --port 8000
 uv run python scripts/smoke.py
 ```
 
-**没有单元测试**（[TO-23](../../ai-discussion/trade-offs.md)）。这是 demo 不是 production system，而且这个项目的主题恰恰是「用 Step 2 的 benchmark 防 AI 行为回归」——golden dataset 加 judge 就是本项目版本的回归测试。
+**没有单元测试**（[TO-23](../../ai-discussion/trade-offs.md)）。这是 demo 不是 production system，而且这个项目的主题恰恰是「用 Step 2 的 benchmark 防 AI 行为回归」——golden dataset 加 judge 就是本项目版本的回归测试，跑法见 [apps/console/README.md](../console/README.md)。
 
 `smoke.py` 跑四条真实路径并把轨迹打出来：文档覆盖的问题、文档没覆盖的问题、跟 Luma 无关的问题，以及**收紧 `in_scope` 规则之后合法问题被拒答**的那条。最后一条是 Step 2 整个高光 demo 的前提，所以在 Step 1 就要验证它走得通——**原定用 `tool_description` 做这个 demo，实测五种改法全都不成立**，详见 [design_step1_ai_app.md §14.1](../../ai-discussion/design_step1_ai_app.md)。
 
@@ -82,11 +91,11 @@ uv run python scripts/smoke.py
 
 `--reload` 模式下可以直接用编辑器的 debugger attach。想看 ReAct 循环的行为，断点打在这三个地方最有用：
 
-- `apps/chatbot/src/ask_luma/graph/runner.py` — 循环的进出条件和上限判断
-- `apps/chatbot/src/ask_luma/graph/reflect.py` — `resolved` 的判定，这里决定了会不会再来一轮
-- `apps/chatbot/src/ask_luma/search.py` — 打分与「返回空结果」的门槛
+- `packages/agent/graph/runner.py` — 循环的进出条件和上限判断
+- `packages/agent/graph/reflect.py` — `resolved` 的判定，这里决定了会不会再来一轮
+- `packages/agent/search.py` — 打分与「返回空结果」的门槛
 
-代码是 **let-it-fail 风格**（[TO-22](../../ai-discussion/trade-offs.md)）：默认不接错误，出问题就带着完整 traceback 崩在原地。全项目只有两处有错误处理——`llm.py` 里对 429 / 超时 / 5xx 的 `tenacity` 重试，以及 `main.py` 路由边界那个「落一条带 `error` 的 Conversation 再返回 502」。**调试时不用去找哪里把异常吞了，因为没有任何地方吞异常。**
+代码是 **let-it-fail 风格**（[TO-22](../../ai-discussion/trade-offs.md)）：默认不接错误，出问题就带着完整 traceback 崩在原地。全项目只有三处有错误处理——`llm.py` 里对 429 / 超时 / 5xx 的 `tenacity` 重试，`main.py` 路由边界那个「落一条带 `error` 的 Conversation 再返回 502」，以及 console 的 benchmark runner 里逐 case 的隔离。**调试时不用去找哪里把异常吞了，因为除这三处外没有任何地方吞异常。**
 
 ---
 
