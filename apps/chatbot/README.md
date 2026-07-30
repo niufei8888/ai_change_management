@@ -132,6 +132,8 @@ There are two kinds of key in `.env`, and the distinction matters.
 | `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Whichever one `MODEL` needs. Never commit it. |
 | `DB_PATH` | Defaults to `./data/app.db`. |
 | `LOG_LEVEL` | `info` / `debug`. |
+| `PORT` | Defaults to `8000`. Only set in hosting environments that pick the port for you; Render injects it and fails the deploy if nothing is bound there ([TO-33](../../ai-discussion/trade-offs.md)). |
+| `SEED_DEMO` | Any non-empty value loads `datasets/demo_seed.json` at startup. Set on the deployed instance, where the filesystem is wiped on every sleep and there is no shell to re-seed from. **Leave it unset locally** and run `python scripts/seed_demo.py load` when you want the data — canned rows appearing in a database you are actively poking at make it harder to tell what you just did ([TO-32](../../ai-discussion/trade-offs.md)). |
 
 ### Behavior configuration — the four versioned levers, **not in `.env`**
 

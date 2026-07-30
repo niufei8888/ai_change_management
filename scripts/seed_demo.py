@@ -18,28 +18,25 @@ prompt constant changes -- a seeded run's config_hash then matches no Version. T
 is the same problem TO-26 dealt with, handled the same way: this is additive and
 idempotent, never destructive, and seeded rows are visibly marked in the UI so
 canned data is never mistaken for something you just produced.
+
+`load` itself lives in behavior_core.seed so the chatbot's lifespan can call it on
+Render, where there is no shell to run this script in (TO-32). What stays here is
+the CLI: exporting, which needs the console's dataset hash, and the staleness
+warning, which is a message for whoever typed the command.
 """
 
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlmodel import SQLModel, select  # noqa: E402
+from sqlmodel import select  # noqa: E402
 
-from behavior_core.db import engine, get_session, seed_baseline  # noqa: E402
+from behavior_core.db import get_session  # noqa: E402
 from behavior_core.models import BenchResult, BenchRun, Conversation, Version  # noqa: E402
-
-FIXTURE = Path(__file__).resolve().parent.parent / "datasets" / "demo_seed.json"
-SEED_PREFIX = "seed-"
-
-# Order matters on load: BenchResult points at BenchRun, and a Conversation names
-# a version_id. Nothing enforces it in SQLite, but loading children first would
-# still be a lie about the shape of the data.
-TABLES = [("versions", Version), ("conversations", Conversation), ("runs", BenchRun),
-          ("results", BenchResult)]
+from behavior_core.seed import FIXTURE, SEED_PREFIX, TABLES  # noqa: E402
+from behavior_core.seed import load as _load  # noqa: E402
 
 
 def export() -> None:
@@ -128,66 +125,16 @@ def _seed_session(row: dict) -> dict:
 
 
 def load() -> None:
-    """Insert anything from the fixture that is not already there, by primary key.
-
-    Deliberately not an upsert: if a row already exists, whatever is in the
-    database wins. A reviewer who has been clicking around should not have their
-    own runs quietly overwritten by canned ones.
-    """
+    """behavior_core.seed.load(), plus the reporting a person at a terminal wants."""
     if not FIXTURE.exists():
         raise SystemExit(f"no fixture at {FIXTURE}; run `export` first")
-    payload = json.loads(FIXTURE.read_text())
 
-    # Tables first, fixture second, seed_baseline last. Calling init_db() up front
-    # would run seed_baseline() against an empty table, inserting a second row with
-    # the same config_hash as the fixture's baseline and leaving two rows claiming
-    # to be active. Running it after means it finds the fixture's row, recognises
-    # the hash as the one the code actually holds, and activates that.
-    SQLModel.metadata.create_all(engine)
-
-    added = {}
-    with get_session() as session:
-        for key, model in TABLES:
-            rows = payload.get(key, [])
-            # Read every id first. Interleaving reads with adds makes SQLAlchemy
-            # autoflush the pending rows mid-loop, and it flushes them before the
-            # datetime coercion below has been applied to the rest.
-            missing = [row for row in rows if session.get(model, row["id"]) is None]
-            session.add_all(_revive(model, row) for row in missing)
-            added[key] = (len(missing), len(rows))
-        session.commit()
-
-    seed_baseline()
-
-    print(f"fixture dataset_hash {payload['dataset_hash']}")
+    added = _load()
+    print(f"fixture dataset_hash {added['dataset_hash']}")
     for key, _ in TABLES:
         new, total = added[key]
         print(f"  {key:14} +{new} of {total}" + ("" if new else "  (already present)"))
-    _warn_if_stale(payload)
-
-
-def _revive(model, row: dict):
-    """Rebuild a row object from JSON, turning ISO strings back into datetimes.
-
-    SQLModel skips validation on `table=True` classes, so `Model(**row)` hands the
-    string straight through to the DateTime column and SQLite rejects it several
-    frames away from the cause. Coercing here by field annotation keeps the fix
-    where the JSON is, rather than making the models tolerate strings they should
-    never see at runtime.
-    """
-    fields = model.model_fields
-    revived = {
-        key: datetime.fromisoformat(value)
-        if isinstance(value, str) and datetime in _annotations(fields[key].annotation)
-        else value
-        for key, value in row.items()
-    }
-    return model(**revived)
-
-
-def _annotations(annotation) -> tuple:
-    # `datetime | None` needs unwrapping; a bare `datetime` does not.
-    return getattr(annotation, "__args__", (annotation,))
+    _warn_if_stale({"dataset_hash": added["dataset_hash"]})
 
 
 def _warn_if_stale(payload: dict) -> None:

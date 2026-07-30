@@ -14,7 +14,7 @@ from sqlmodel import desc, select  # noqa: E402
 
 from agent import corpus, llm  # noqa: E402
 from agent.graph import runner  # noqa: E402
-from behavior_core import config_client  # noqa: E402
+from behavior_core import config_client, seed  # noqa: E402
 from behavior_core.db import get_session, init_db  # noqa: E402
 from behavior_core.models import Conversation  # noqa: E402
 
@@ -24,6 +24,20 @@ WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     llm.require_key()
+    # Off by default, on in the deployed instance. Render's free tier wipes the
+    # filesystem every time the service spins down, and offers no shell and no
+    # one-off jobs to re-seed from, so this is the only place demo data can come
+    # back (TO-32). Locally it stays off: canned rows mixed into a database you
+    # are actively poking at make it harder to tell what you just did.
+    #
+    # Before init_db(), not after, and the order is load-bearing. seed_baseline()
+    # returns early once an active row carries the code's config_hash, so running
+    # it against an empty table first creates one, and the fixture's own baseline
+    # row -- same hash, different id, also active -- then satisfies the same check
+    # and both survive. Two rows claiming to be live is the one state this product
+    # must never be in. load() runs create_all itself, so it stands alone here.
+    if os.getenv("SEED_DEMO"):
+        seed.load()
     init_db()
     corpus.load()
     yield
@@ -146,6 +160,12 @@ def health() -> dict:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots() -> FileResponse:
+    """Crawlers look for this at the root, so it cannot live under /static."""
+    return FileResponse(WEB_DIR / "robots.txt", media_type="text/plain")
 
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")

@@ -9,6 +9,17 @@ The second one is the point. Ask Luma exists to be the thing under management.
 
 Start with [APPROACH.md](APPROACH.md) for what was built and why, what was left out, and what breaks first.
 
+## Live
+
+**<!-- RENDER_URL -->** (chatbot) · **<!-- RENDER_URL -->/console** (console)
+
+Two things to expect, both consequences of a free hosting tier rather than of anything being broken:
+
+- **The first request can take about a minute.** The instance sleeps after 15 minutes of no traffic. Render shows its own loading page while it wakes up.
+- **The data resets.** A free instance loses its filesystem every time it sleeps, so the conversation history and benchmark runs you see are re-seeded from [`datasets/demo_seed.json`](datasets/demo_seed.json) on each cold start. They are real recorded runs, not fabricated rows, and seeded conversations are marked `seeded` in the Production tab. Anything you produce yourself survives until the next sleep.
+
+Running it locally avoids both. See [design_step4_deploy.md](ai-discussion/design_step4_deploy.md) for why this tier was chosen anyway.
+
 ## Run it
 
 ```bash

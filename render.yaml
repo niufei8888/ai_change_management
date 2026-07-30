@@ -1,0 +1,31 @@
+# Render service definition, kept in the repo rather than only in the dashboard.
+#
+# Same argument as everything else here: a setting that decides how the service
+# behaves should be reviewable in a diff. The one exception is the API key, which
+# is `sync: false` -- Render prompts for it and stores it, and it never lands in
+# git. See TO-32 and TO-33.
+#
+# Note there is no `dockerCommand`. The Dockerfile's CMD already expands
+# ${PORT:-8000} in a shell, so it works both here (where Render injects PORT) and
+# under `docker compose up` locally. Overriding it from the dashboard with a bare
+# `--port $PORT` fails: that field is not shell-expanded, and uvicorn rejects the
+# literal string with "'$PORT' is not a valid integer".
+services:
+  - type: web
+    name: ask-luma
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /api/health
+    envVars:
+      - key: MODEL
+        value: gemini/gemini-3.1-flash-lite
+      # Free instances lose the filesystem on every spin-down, and offer no shell
+      # and no one-off jobs to re-seed from. Without this the console comes back
+      # with an empty Simulation history and no traffic. Off by default in code, so
+      # this line is what makes the deployed instance the exception.
+      - key: SEED_DEMO
+        value: "1"
+      - key: GEMINI_API_KEY
+        sync: false

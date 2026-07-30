@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /
+
+# This is a take-home demo wired to a real, metered LLM key. Being indexed would
+# mean strangers finding it and spending that quota.
+#
+# Worth being precise about what this file does and does not do: it is a voluntary
+# convention. Well-behaved search crawlers honour it, so it does cut the "indexed,
+# then found by someone who was not sent the link" path. It does nothing against
+# scrapers, scanners, or anyone who simply has the URL. The actual cap on cost is
+# that the key gets revoked once the review is over -- not this file. See TO-34.

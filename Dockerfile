@@ -26,4 +26,11 @@ ENV DB_PATH=/app/data/app.db
 EXPOSE 8000
 # server.main is the only module that imports both apps: chatbot at /, console at
 # /console, one process so the console's cache invalidation reaches the chatbot.
-CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+#
+# Shell form, not exec form, so that `${PORT:-8000}` is expanded by the container's
+# own /bin/sh. Render injects PORT (default 10000) and fails the whole deploy if it
+# cannot find a bound port; the `:-8000` keeps `docker compose up` on 8000 locally.
+# Doing it here rather than in Render's Docker Command field means one definition
+# covers both, and it does not depend on whether that field is shell-expanded --
+# passing a literal `$PORT` to uvicorn dies with "not a valid integer".
+CMD uvicorn server.main:app --host 0.0.0.0 --port ${PORT:-8000}

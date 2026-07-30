@@ -1,6 +1,6 @@
 # APPROACH
 
-**Not deployed.** Everything runs with `docker compose up --build`; §Deployment at the bottom says why there is no live URL rather than leaving you to wonder.
+**Live at <!-- RENDER_URL -->** (console at `/console`), and `docker compose up --build` locally. The hosted instance is a free tier: the first request after idle takes about a minute to wake, and its data resets on each cold start. §Deployment at the bottom says what that cost bought and what it did not.
 
 ---
 
@@ -239,8 +239,14 @@ It also stopped me once. Asked to reset the database after a `config_hash` chang
 
 ## Deployment
 
-**No live URL.** The prompt says a deployment goes a long way, and I agree, so this is a choice rather than an omission.
+Render free tier, Docker, one web service, auto-deployed from `main`. The service definition is in [`render.yaml`](render.yaml) rather than only in the dashboard, for the same reason prompts live in a database and not in the code: a setting that changes how the thing behaves should be reviewable in a diff.
 
-The blocker is credentials. It runs on my personal Gemini key, which I am rotating before submitting this; a public deployment would either expose that key or go dark the moment I rotate it. The right version of this is a key provisioned for the deployment alone plus a persistent volume for SQLite, and it deserves the same treatment as everything else here rather than being bolted on last. It is scoped as its own step.
+Two costs came with picking the free tier, and both are visible to you rather than hidden:
 
-`docker compose up --build` gets you both surfaces on one port. Without a `.env` the container still starts and then exits naming the environment variable it wants, because a missing credential should not present as a missing file.
+**It sleeps after 15 minutes and takes about a minute to wake.** For a link someone opens once, that lands on exactly the wrong request. I kept it anyway because the alternatives were worse for this purpose: Fly.io and Railway no longer have a real free tier in 2026, Cloud Run wants a billing account attached, and an Oracle free VM means owning SSH, TLS and a reverse proxy. I did not add a cron job to ping it awake — the 750 monthly instance hours are priced on the assumption that free services sleep, and keeping one warm on purpose is using the tier against its own terms.
+
+**A free instance loses its filesystem every time it sleeps**, and the free tier has no persistent disk, no shell, and no one-off jobs. So there is no way to re-seed by hand after a deploy — the demo data has to come back from the app's own startup, which is what `SEED_DEMO=1` does. That turned out better than the paid-disk version: every cold start gives a known-good state that nobody's clicking around can corrupt.
+
+Deploying also created a real exposure I did not have locally: `/api/chat` is public and spends a metered key on every request. There is a `robots.txt` and a `noindex` meta tag, and it is worth being exact about what those buy — they are a voluntary convention that well-behaved crawlers honour, so they cut the "indexed, then found by a stranger" path and nothing else. They do nothing against a scanner or anyone holding the URL. **The actual cap on cost is that the key gets revoked when the review is over.** I chose that over adding rate limiting, because a limiter behind Render's proxy has to trust `X-Forwarded-For` to know who it is limiting, and shipping something that looks like protection while being trivially spoofable is worse than saying plainly that there is none.
+
+`docker compose up --build` still gets you both surfaces on one port, with none of the above. Without a `.env` the container starts and then exits naming the environment variable it wants, because a missing credential should not present as a missing file.
