@@ -3,27 +3,40 @@
 Two things in one repo, deliberately: an AI product, and the system that manages changes to its behavior.
 
 - **Ask Luma** (`/`) — a Q&A assistant that answers questions about Luma AI products using only the official documentation. Internally a ReAct loop: decide scope, search, check whether the evidence is enough, search again (max 3 rounds), then answer — or say plainly that the docs do not cover it. [apps/chatbot/README.md](apps/chatbot/README.md)
-- **Driftline** (`/console`) — the console that introduces, evaluates and manages changes to that behavior. Edit the six versioned levers, try them on a single conversation, run them against a golden dataset, save as a version, activate. [apps/console/README.md](apps/console/README.md)
+- **Driftline** (`/console`) — the console that introduces, evaluates and manages changes to that behavior. Edit the four versioned levers, try them on a single conversation, run them against a golden dataset, save as a version, activate. [apps/console/README.md](apps/console/README.md)
 
 The second one is the point. Ask Luma exists to be the thing under management.
+
+Start with [APPROACH.md](APPROACH.md) for what was built and why, what was left out, and what breaks first.
 
 ## Run it
 
 ```bash
+docker compose up --build
+```
+
+Or without Docker:
+
+```bash
 uv sync
-cp .env.example .env                     # then fill in GEMINI_API_KEY
+cp .env.example .env                     # then fill in your provider's key
 uv run python -m ask_luma.cli init-db
+uv run python scripts/seed_demo.py load  # optional: real pre-computed data to look at
 uv run uvicorn server.main:app --reload --port 8000
 ```
 
 - <http://localhost:8000> — the chatbot
 - <http://localhost:8000/console> — the console
 
-Or `docker compose up --build`. There is no frontend build step, and the corpus is committed, so nothing needs to reach the internet except the model API.
+There is no frontend build step and the corpus is committed, so nothing needs to reach the internet except the model API.
+
+**About the API key.** This was built and measured on Gemini (`gemini/gemini-3.1-flash-lite`, [Google AI Studio](https://aistudio.google.com/apikey)), which is not one of the keys this take-home provisions. `MODEL` also accepts `anthropic/…` and `openai/…` — the key check, price table and routing are all in place, but I had neither key and never ran them, so `.env.example` says "wired, not verified" rather than "supported" ([TO-31](ai-discussion/trade-offs.md)).
+
+With no key at all, `scripts/seed_demo.py load` inserts real exported rows — two benchmark runs, one green baseline and one catching the regression — so the console is worth looking at before you spend a request.
 
 ## The one idea worth knowing
 
-Behavior is a **versioned configuration** resolved on the critical path, not something compiled into a deploy. Six levers — three prompts, the tool description, temperature, and the loop cap — are hashed into a `config_hash`, stored as a `Version` row, and looked up on every single request. That is what makes it possible to change behavior, evaluate the change, ship it, and roll it back without touching the code.
+Behavior is a **versioned configuration** resolved on the critical path, not something compiled into a deploy. Four levers — one prompt per node in the ReAct loop, plus the tool description — are hashed into a `config_hash`, stored as a `Version` row, and looked up on every single request. That is what makes it possible to change behavior, evaluate the change, ship it, and roll it back without touching the code.
 
 Evaluation splits every golden case into two halves that are treated very differently:
 
@@ -42,6 +55,7 @@ apps/console             Driftline: control surface
 apps/server              the only module that imports both, one process hosts both
 corpus/                  39 articles, fetched at build time, committed
 datasets/golden.yaml     2 personas, 3 golden cases
+datasets/demo_seed.json  real rows exported from a live run, for a populated console
 ai-discussion/           the full design record, in Chinese, including rejected approaches
 ```
 
@@ -54,4 +68,5 @@ Written in Chinese, and it is the honest version — it includes the approaches 
 - [ai-discussion/design_high_level.md](ai-discussion/design_high_level.md) — the whole product
 - [ai-discussion/design_step1_ai_app.md](ai-discussion/design_step1_ai_app.md) — Ask Luma, including five attempts at a demo regression that all failed to reproduce
 - [ai-discussion/design_step2_console_with_benchmark.md](ai-discussion/design_step2_console_with_benchmark.md) — Driftline
-- [ai-discussion/trade-offs.md](ai-discussion/trade-offs.md) — 30 numbered decisions, each with what it costs and what would overturn it
+- [ai-discussion/design_step3_misc_and_wrap_up.md](ai-discussion/design_step3_misc_and_wrap_up.md) — the two signposted non-goals, and the delivery surface
+- [ai-discussion/trade-offs.md](ai-discussion/trade-offs.md) — 21 numbered decisions, each with what it costs and what would overturn it, and an index of the five that carry the argument

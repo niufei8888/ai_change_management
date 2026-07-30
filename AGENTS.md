@@ -1,42 +1,46 @@
-# 仓库约定
+# Repository conventions
 
-## `ai-discussion/` 不要动
+## Leave `ai-discussion/` alone
 
-`ai-discussion/` 存的是这个项目的全部设计过程文档（题面、总设计、分步设计、trade-off 记录）。
+`ai-discussion/` holds the entire design record for this project: the prompt, the overall design, the per-step designs, and the trade-off log.
 
-**写代码、重构目录、清理仓库的时候一律不要删除、移动或改写这个目录下的任何文件。** 它不是临时草稿，也不是可以被 README 取代的东西——`APPROACH.md` 只写给评审看的结论，完整的推演过程和被否掉的方案都在这里。
+**When writing code, restructuring directories, or cleaning up the repo, never delete, move or rewrite anything under it.** It is not scratch work and it is not superseded by a README — `APPROACH.md` carries only the conclusions a reviewer needs, while the reasoning and the rejected approaches live here.
 
-需要改设计的时候，改 `ai-discussion/` 里对应的文档，不要在代码目录里另起一份。
+To change a design, edit the document in `ai-discussion/`. Do not start a second copy somewhere in the code tree.
 
-## 交流语言
+## Language
 
-设计文档和讨论用简体中文。代码、注释、commit message、`APPROACH.md` 用英文。
+`ai-discussion/` is written in Simplified Chinese; it is a working record for the author. **Everything else is English** — code, comments, commit messages, READMEs, `APPROACH.md`, the golden dataset. A reviewer has to be able to run this and read how it works, and the setup instructions are part of what is being delivered.
 
-## 代码风格：let it fail
+## Code style: let it fail
 
-见 `ai-discussion/trade-offs.md` 的 TO-22。默认不接错误，让它带着完整 traceback 崩在原地。全项目只有两处错误处理：
+See TO-22 in `ai-discussion/trade-offs.md`. Errors are not caught by default; a problem crashes where it happens with a full traceback. There are exactly **three** pieces of error handling in the project, and there should not be a fourth:
 
-1. `llm.py` 里 `tenacity` 对 429 / 超时 / 5xx 的退避重试
-2. 路由边界那个「落一条带 `error` 的 Conversation 再返回 502」
+1. `llm.py` — `tenacity` retrying 429 / timeout / 5xx with backoff. Those are the provider's state, not our bug.
+2. The route boundary in `apps/chatbot/src/ask_luma/main.py` — one `try` around the request that writes a `Conversation` carrying `error` and a partial `trajectory`, then returns 502. This is observability, not recovery: it does not rescue the request, it makes sure the failure is recorded.
+3. `apps/console/src/driftline/bench.py` — per-case isolation. Running a batch of golden cases, one case blowing up must be recorded as that case's `BenchResult.error` and must not take the batch with it.
 
-不写 `except Exception` 兜底，不为「理论上可能为 None」加降级分支。全项目第三处、也是最后一处错误处理是 `apps/console/src/driftline/bench.py` 里逐 case 的 `try`：批量跑 golden case 时，一条崩了必须记成那条 case 的 `BenchResult.error`，不能带走整批。
+No `except Exception` catch-alls, and no fallback branch for a value that is "theoretically possibly None".
 
-## 目录边界
+## Directory boundaries
 
 ```
-packages/behavior_core        契约层：config / models / db / config_client
-packages/agent    ──▶ behavior_core       可复用的 ReAct 内核 + tools 注册表
+packages/behavior_core                 contracts: config / models / db / config_client
+packages/agent    ──▶ behavior_core    the reusable ReAct kernel + the tool registry
 apps/chatbot      ──▶ agent, behavior_core
 apps/console      ──▶ agent, behavior_core
-apps/chatbot      ──✗ apps/console        禁止
-apps/console      ──✗ apps/chatbot        禁止
-behavior_core     ──✗ agent               禁止（TOOL_REGISTRY 要引 search.TOOL_NAME，放 core 会成环）
+apps/chatbot      ──✗ apps/console     forbidden
+apps/console      ──✗ apps/chatbot     forbidden
+behavior_core     ──✗ agent            forbidden (TOOL_REGISTRY needs search.TOOL_NAME; a
+                                       contract layer importing the kernel would cycle)
 ```
 
-`apps/server/src/server/main.py` 是唯一允许同时 import 两个 app 的地方，且只做 mount。这条规则由 `scripts/check_assertions.py` 守住。
+`apps/server/src/server/main.py` is the only place allowed to import both apps, and it only mounts them. `scripts/check_assertions.py` enforces this.
 
-Agent 内核在 `packages/agent` 而不在 `apps/chatbot` 里，是因为两个 app 必须跑**完全同一个循环**：chatbot 把它服务给用户，console 拿它跑 golden dataset。console 要是 import chatbot，「benchmark 测的就是 production 的行为」就从结构事实退化成一句声明。
+**The rule is about Python imports, not about HTTP.** One process serves both apps on one origin, so the console's page fetching `/api/conversations` — an endpoint that belongs to the chatbot — has not crossed the boundary. Nothing in `apps/console/src/` imports `ask_luma`, and that is the invariant being protected.
 
-## 工具名只有一处定义
+The kernel lives in `packages/agent` rather than inside `apps/chatbot` because both apps must run **exactly the same loop**: the chatbot serves it to users, the console runs it against the golden dataset. If the console imported the chatbot, "the benchmark measures production behavior" would degrade from a structural fact into a claim.
 
-`packages/agent/search.py` 的 `TOOL_NAME` 是唯一定义。三个地方必须对上：prompt 里的 `#search_docs`、轨迹里 search 节点的 `tool` 字段、`datasets/golden.yaml` 里的 `tool_called.name`。断言读 `tool` 字段而不是 `node` 名——读 node 名的话，工具改名后断言会**永远静默 pass**，那比没有断言更糟。
+## The tool name is defined once
+
+`TOOL_NAME` in `packages/agent/search.py` is the only definition. Three things have to agree: the `#search_docs` mention in prompts, the `tool` field on the search node in the trajectory, and `tool_called.name` in `datasets/golden.yaml`. The assertion reads the `tool` field rather than the `node` name — reading the node name would make the assertion pass silently forever after a tool rename, which is worse than having no assertion at all.

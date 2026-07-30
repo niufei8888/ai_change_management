@@ -2,7 +2,15 @@
 
 If it is in BehaviorConfig it can be versioned, diffed, rolled out to a slice of
 traffic, and rolled back. If it is not in here it is a controlled variable
-(model id, retry policy, search thresholds) and changing it is a code change.
+(model id, temperature, loop cap, retry policy, search thresholds) and changing it
+is a code change.
+
+Four levers, not six. `temperature` and `max_loops` were levers and were cut --
+they are now constants in `agent.llm` and `agent.graph.runner`. Both were real
+levers with real arguments behind them; they were the two whose demo value was
+lowest per unit of screen space, and screen space in a five-minute walkthrough is
+the binding constraint. See TO-06 in ai-discussion/trade-offs.md for what that
+costs, which is not nothing.
 """
 
 import hashlib
@@ -16,8 +24,6 @@ class BehaviorConfig(BaseModel):
     reflect_prompt: str
     synthesize_prompt: str
     tool_description: str
-    temperature: float
-    max_loops: int
 
     def config_hash(self) -> str:
         canonical = json.dumps(self.model_dump(), sort_keys=True, ensure_ascii=False)
@@ -79,8 +85,6 @@ BASELINE_V1 = BehaviorConfig(
     reflect_prompt=REFLECT_PROMPT_V1,
     synthesize_prompt=SYNTHESIZE_PROMPT_V1,
     tool_description=TOOL_DESCRIPTION_V1,
-    temperature=0.2,
-    max_loops=3,
 )
 
 # The regression step 2 is built to catch, and the only one of five candidates

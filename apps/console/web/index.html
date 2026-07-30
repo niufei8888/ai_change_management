@@ -16,6 +16,12 @@
     --muted: #6b6862;
     --hairline: #e8e5de;
     --accent: #c9765a;
+    /* Same two declarations as apps/chatbot/web/index.html, on purpose: a
+       transcript should not look like a different product depending on which
+       surface you are reading it on. Mixed against `transparent` so they
+       composite over the white cards here and the paper page there. */
+    --msg-user: color-mix(in srgb, var(--accent) 8%, transparent);
+    --msg-bot: color-mix(in srgb, var(--text) 8%, transparent);
     --pass: #3f7d58;
     --fail: #b0483a;
     --radius: 8px;
@@ -153,7 +159,16 @@
     font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
     color: var(--muted); margin: 0 0 8px; font-weight: 600;
   }
-  .answer { white-space: pre-wrap; background: var(--bg); border-radius: 6px; padding: 11px 13px; margin: 10px 0; }
+  /* Same class names as the chatbot for the same two things. The question used to
+     be `small muted` next to a full-size answer, which is why it disappeared. */
+  .question {
+    background: var(--msg-user); border-radius: 6px;
+    padding: 11px 13px; margin: 10px 0; font-weight: 500;
+  }
+  .answer {
+    white-space: pre-wrap; background: var(--msg-bot); border-radius: 6px;
+    padding: 11px 13px; margin: 10px 0;
+  }
 
   details { margin-top: 10px; }
   summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
@@ -168,6 +183,28 @@
   .diff { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
   .diff ins { background: color-mix(in srgb, var(--pass) 20%, transparent); text-decoration: none; }
   .diff del { background: color-mix(in srgb, var(--fail) 20%, transparent); }
+
+  /* Not-built-yet surfaces. Deliberately legible rather than greyed into
+     invisibility: the point is that you can read the shape of the missing
+     feature, which a "coming soon" line cannot give you. */
+  .soon { border-style: dashed; }
+  .soon h2 { display: flex; align-items: baseline; gap: 9px; }
+  .soon fieldset { border: 0; padding: 0; margin: 0; opacity: .55; }
+  .soon input, .soon select { cursor: not-allowed; }
+  .tag-soon {
+    font-family: Inter, sans-serif; font-size: 10.5px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--hairline); border-radius: 100px; padding: 1px 8px;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  /* Production table. Rows are clickable, so they need to look it. */
+  table.rows th { border-bottom: 1px solid var(--hairline); padding-bottom: 7px; }
+  table.rows td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--hairline); }
+  table.rows tbody tr { cursor: pointer; }
+  table.rows tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  table.rows td.q { max-width: 320px; }
+  .trow-detail td { background: var(--bg); cursor: default; }
 </style>
 </head>
 <body>
@@ -180,13 +217,13 @@
 </div>
 
 <div class="layout">
-  <!-- LEFT: the six versioned levers -->
+  <!-- LEFT: the versioned levers -->
   <div class="pane left">
     <div class="card">
       <h2>Behavior configuration</h2>
       <div class="small muted" style="margin-bottom:14px">
-        Six levers. Everything else (model, retry policy, search thresholds) is a controlled
-        variable and changing it is a code change.
+        Four levers. Everything else &mdash; model, temperature, the loop cap, retry policy,
+        search thresholds &mdash; is a controlled variable, and changing it is a code change.
       </div>
 
       <div class="lever">
@@ -196,19 +233,8 @@
 
       <div id="prompt-levers"></div>
 
-      <div class="row">
-        <div class="lever">
-          <label for="l-temperature">temperature</label>
-          <input id="l-temperature" type="number" step="0.1" min="0" max="2" />
-        </div>
-        <div class="lever">
-          <label for="l-max_loops">max_loops</label>
-          <input id="l-max_loops" type="number" step="1" min="1" max="6" />
-        </div>
-      </div>
-
       <div class="actions">
-        <input id="v-label" type="text" placeholder="new version label" style="flex:1;min-width:150px" />
+        <input id="v-label" type="text" style="flex:1;min-width:150px" />
         <button id="v-save" class="ghost">Save as version</button>
       </div>
       <div class="small muted" style="margin-top:8px">
@@ -224,6 +250,55 @@
       </table>
       <div id="v-diff"></div>
     </div>
+
+    <!-- Gradual rollout: runtime is live, control surface is not built. The
+         controls are real and disabled rather than replaced by a note, because a
+         disabled slider tells you the shape of the missing feature and a
+         sentence does not. -->
+    <div class="card soon">
+      <h2>Gradual rollout <span class="tag-soon">not built</span></h2>
+      <div class="small muted" style="margin-bottom:14px">
+        <strong>Activate is a 100% switch.</strong> Traffic is never split today.
+        The runtime for splitting it, though, is already on the request path:
+        <span class="mono">config_client.resolve()</span> buckets every request by a
+        salted hash of <span class="mono">session_id</span>, compares it against
+        <span class="mono">rollout_pct</span>, and stamps
+        <span class="mono">arm</span> and <span class="mono">experiment_tag</span> onto
+        both the response and the stored conversation. What is missing is this control
+        surface and a ramp policy &mdash; health thresholds, a step schedule, and an
+        auto-rollback trigger.
+      </div>
+      <fieldset disabled title="Not built. The bucketing this would drive already runs on every request; see the note above.">
+        <div class="lever">
+          <label for="r-pct">
+            <span>rollout_pct</span>
+            <span class="hint">share of sessions on the candidate</span>
+          </label>
+          <input id="r-pct" type="range" min="0" max="100" value="100" />
+          <div class="small muted mono">100 &mdash; every session, which is what Activate does</div>
+        </div>
+        <div class="row">
+          <div class="lever">
+            <label for="r-baseline">baseline arm</label>
+            <select id="r-baseline"></select>
+          </div>
+          <div class="lever">
+            <label for="r-candidate">candidate arm</label>
+            <select id="r-candidate"></select>
+          </div>
+        </div>
+        <div class="lever">
+          <label for="r-tag">experiment_tag <span class="hint">stamped on every conversation in the run</span></label>
+          <input id="r-tag" type="text" placeholder="e.g. tighter-scope-2026-07" />
+        </div>
+      </fieldset>
+      <div class="small muted">
+        Read the other half of this in the <strong>Production</strong> tab: the
+        <span class="mono">arm</span> and <span class="mono">experiment_tag</span> columns
+        there are populated by the code described above, and are empty only because no
+        experiment has ever been created.
+      </div>
+    </div>
   </div>
 
   <!-- RIGHT: playground -->
@@ -231,6 +306,7 @@
     <div class="tabs" role="tablist">
       <button id="tab-conv" role="tab" aria-selected="true">Conversation</button>
       <button id="tab-sim" role="tab" aria-selected="false">Simulation</button>
+      <button id="tab-prod" role="tab" aria-selected="false">Production</button>
     </div>
 
     <section id="panel-conv">
@@ -259,6 +335,42 @@
       </div>
       <div id="s-out"></div>
     </section>
+
+    <!-- Real traffic, read-only. The other half of the rollout signpost: every
+         column that a tag-based experiment would slice on is already being
+         written, so the claim "the data is there" is a table you can look at
+         rather than a sentence you have to take on faith. -->
+    <section id="panel-prod" hidden>
+      <div class="banner">
+        Every answer <span class="mono">/chat</span> has ever given, newest first, with the
+        behavior version that produced it. This is the table
+        <span class="mono">Simulation</span> is a stand-in for: a golden dataset is three
+        cases somebody wrote down, this is what users actually asked.
+      </div>
+      <div class="actions" style="margin-bottom:14px">
+        <button id="p-refresh" class="ghost">Refresh</button>
+        <span class="small muted" id="p-status"></span>
+      </div>
+      <div id="p-out"></div>
+      <div class="card soon" style="margin-top:18px">
+        <h2>Slicing this by experiment <span class="tag-soon">not built</span></h2>
+        <div class="small muted">
+          <span class="mono">GET /api/conversations</span> already accepts
+          <span class="mono">?tag=</span> and <span class="mono">?arm=</span>, and
+          <span class="mono">experiment_tag</span> is an indexed column &mdash; the query
+          path exists and is what the table above is read through. Three things are not
+          built on top of it:
+          <ul style="margin:8px 0 0; padding-left:20px">
+            <li>filtering and search by tag, and a baseline-vs-candidate comparison of the two arms</li>
+            <li>promoting a production conversation into <span class="mono">datasets/golden.yaml</span>
+                as a new case, which is the honest way to grow a three-case dataset</li>
+            <li>re-running the judge over a tagged slice on a schedule, with a violation-rate
+                threshold &mdash; the missing piece is the schedule and the threshold, not the
+                judge, and not the data</li>
+          </ul>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -270,8 +382,7 @@ const PROMPT_LEVERS = [
   ["synthesize_prompt", "writes the answer"],
   ["tool_description", "what #search_docs expands to"],
 ];
-const NUMBER_LEVERS = ["temperature", "max_loops"];
-const LEVERS = [...PROMPT_LEVERS.map(([k]) => k), ...NUMBER_LEVERS];
+const LEVERS = PROMPT_LEVERS.map(([k]) => k);
 
 let versions = [];
 let tools = [];
@@ -312,7 +423,6 @@ for (const [key, hint] of PROMPT_LEVERS) {
   attachMentionMenu(area, wrap);
   area.addEventListener("input", onDraftChange);
 }
-for (const key of NUMBER_LEVERS) $("l-" + key).addEventListener("input", onDraftChange);
 
 function mentionPreview(key) {
   const box = el("div", "expanded");
@@ -322,14 +432,18 @@ function mentionPreview(key) {
 }
 
 function draft() {
-  const config = {};
-  for (const key of PROMPT_LEVERS.map(([k]) => k)) config[key] = $("l-" + key).value;
-  config.temperature = parseFloat($("l-temperature").value);
-  config.max_loops = parseInt($("l-max_loops").value, 10);
-  return config;
+  return Object.fromEntries(LEVERS.map((key) => [key, $("l-" + key).value]));
 }
 
-function loadDraft(config) {
+// Which saved version the editor is currently holding, or null once the draft has
+// been edited away from it. The dropdown reports this rather than instructing: it
+// used to read "pick a version" while the editor already held the live config, and
+// a control that disagrees with the state behind it is the exact failure this
+// console exists to remove.
+let loadedVersionId = null;
+
+function loadDraft(config, versionId = null) {
+  loadedVersionId = versionId;
   for (const key of LEVERS) $("l-" + key).value = config[key];
   onDraftChange();
 }
@@ -352,6 +466,13 @@ function onDraftChange() {
       })
       .join("\n");
   }
+
+  const from = versions.find((v) => v.id === loadedVersionId);
+  if (from && LEVERS.some((key) => from.config[key] !== $("l-" + key).value)) {
+    loadedVersionId = null;
+  }
+  $("v-load").value = loadedVersionId ?? "";
+
   $("draft-hash").textContent = "changed, run to see";
 }
 
@@ -448,7 +569,7 @@ async function refreshVersions() {
 
     const actions = el("td", "actions");
     const load = el("button", "quiet", "load");
-    load.addEventListener("click", () => loadDraft(v.config));
+    load.addEventListener("click", () => loadDraft(v.config, v.id));
     actions.appendChild(load);
     if (v.status !== "active") {
       const go = el("button", "ghost", "activate");
@@ -460,26 +581,61 @@ async function refreshVersions() {
   }
 
   const select = $("v-load");
-  select.replaceChildren(el("option", null, "— pick a version —"));
+  // Explicit empty value: an <option> with no value attribute reports its own text
+  // as its value, so `select.value = ""` would silently fail to match it.
+  const unsaved = el("option", null, "— unsaved draft —");
+  unsaved.value = "";
+  select.replaceChildren(unsaved);
   for (const v of versions) {
     const option = el("option", null, `${v.label} · ${v.status} · ${v.config_hash}`);
     option.value = v.id;
     select.appendChild(option);
   }
+  select.value = loadedVersionId ?? "";
+
+  // The disabled rollout selectors get the real version list too. A disabled
+  // control with nothing in it is a mockup; one that would work if it were
+  // enabled is a signpost.
+  const active = versions.find((v) => v.status === "active");
+  for (const [id, preselect] of [["r-baseline", active], ["r-candidate", null]]) {
+    const box = $(id);
+    box.replaceChildren();
+    for (const v of versions) {
+      const option = el("option", null, `${v.label} · ${v.config_hash}`);
+      option.value = v.id;
+      option.selected = preselect ? v.id === preselect.id : false;
+      box.appendChild(option);
+    }
+  }
 }
 
 $("v-load").addEventListener("change", (e) => {
   const v = versions.find((x) => x.id === e.target.value);
-  if (v) loadDraft(v.config);
+  if (v) loadDraft(v.config, v.id);
 });
 
+// A timestamp label, shown as the placeholder and used verbatim if the field is
+// left empty. Naming a version is a real decision and a good name beats this, but
+// being made to invent one before you can save is friction at exactly the wrong
+// moment -- you are mid-experiment, not mid-release. Regenerated on focus so it
+// does not go stale while the tab sits open.
+function suggestedLabel() {
+  const t = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `v-${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}`;
+}
+$("v-label").placeholder = suggestedLabel();
+$("v-label").addEventListener("focus", () => { $("v-label").placeholder = suggestedLabel(); });
+
 $("v-save").addEventListener("click", async () => {
-  const label = $("v-label").value.trim();
-  if (!label) return alert("give the version a label");
-  await api("/versions", {
+  const label = $("v-label").value.trim() || suggestedLabel();
+  // The draft now *is* a saved version, so point the selector at it rather than
+  // leaving it reading "unsaved draft" over content that was just saved.
+  const saved = await api("/versions", {
     method: "POST",
     body: JSON.stringify({ config: draft(), label, note: "saved from console" }),
   });
+  loadedVersionId = saved.id;
   $("v-label").value = "";
   await refreshVersions();
 });
@@ -511,7 +667,7 @@ function renderDiff() {
     box.innerHTML = wordDiff(String(a.config[key]), String(b.config[key]));
     out.appendChild(box);
   }
-  if (same) out.appendChild(el("div", "small muted", "identical on all six levers"));
+  if (same) out.appendChild(el("div", "small muted", `identical on all ${LEVERS.length} levers`));
 }
 
 // Longest-common-subsequence word diff. Small enough to hand-write, and the
@@ -535,15 +691,14 @@ function wordDiff(a, b) {
 
 // ---------- tabs ----------
 
-for (const [tab, panel, other, otherPanel] of [
-  ["tab-conv", "panel-conv", "tab-sim", "panel-sim"],
-  ["tab-sim", "panel-sim", "tab-conv", "panel-conv"],
-]) {
-  $(tab).addEventListener("click", () => {
-    $(tab).setAttribute("aria-selected", "true");
-    $(other).setAttribute("aria-selected", "false");
-    $(panel).hidden = false;
-    $(otherPanel).hidden = true;
+const TABS = ["conv", "sim", "prod"];
+for (const name of TABS) {
+  $("tab-" + name).addEventListener("click", () => {
+    for (const other of TABS) {
+      $("tab-" + other).setAttribute("aria-selected", String(other === name));
+      $("panel-" + other).hidden = other !== name;
+    }
+    if (name === "prod") refreshProduction();
   });
 }
 
@@ -586,7 +741,7 @@ function conversationView(question, data) {
   box.appendChild(head);
 
   const body = el("div", "body");
-  body.append(el("div", "small muted", question), el("div", "answer", data.answer || "(empty)"));
+  body.append(el("div", "question", question), el("div", "answer", data.answer || "(empty)"));
   if (data.citations?.length) {
     body.appendChild(el("div", "small muted", "cites: " + data.citations.map((c) => c.title).join(" · ")));
   }
@@ -720,9 +875,12 @@ function caseView(result) {
     return box;
   }
 
+  // The persona note stays metadata rather than becoming a bubble: it describes
+  // the simulated user, and the model never receives it -- the persona is already
+  // baked into how the question is worded.
   body.append(
     el("div", "small muted", result.persona_note),
-    el("div", "small", result.question),
+    el("div", "question", result.question),
     el("div", "answer", result.answer || "(empty)"),
   );
 
@@ -780,7 +938,7 @@ function renderDatasetPreview() {
     box.appendChild(head);
 
     const body = el("div", "body");
-    body.append(el("div", "small muted", c.persona_note), el("div", "small", c.question));
+    body.append(el("div", "small muted", c.persona_note), el("div", "question", c.question));
     const cols = el("div", "assert-cols");
 
     const fixed = el("div");
@@ -803,6 +961,100 @@ function renderDatasetPreview() {
     box.appendChild(body);
     out.appendChild(box);
   }
+}
+
+// ---------- production ----------
+
+// This reads /api/conversations, which belongs to the chatbot, not to the console
+// API. That is not the boundary violation it looks like: the rule in AGENTS.md is
+// about Python imports, and one process serves both apps on one origin (TO-08).
+// A page fetching an HTTP endpoint it needs has not crossed anything.
+$("p-refresh").addEventListener("click", refreshProduction);
+
+async function refreshProduction() {
+  $("p-status").textContent = "loading…";
+  const response = await fetch("/api/conversations?limit=30");
+  const rows = await response.json();
+  $("p-status").textContent = rows.length
+    ? `${rows.length} most recent · click a row for its trajectory`
+    : "";
+  const out = $("p-out");
+  out.replaceChildren();
+
+  if (!rows.length) {
+    out.appendChild(
+      el("div", "small muted", "No traffic yet. Ask something at /chat and refresh."),
+    );
+    return;
+  }
+
+  const table = el("table", "rows");
+  const head = el("tr");
+  for (const label of ["when", "question", "version", "arm", "tag", "outcome", "cost"]) {
+    head.appendChild(el("th", null, label));
+  }
+  table.appendChild(el("thead")).appendChild(head);
+  const body = el("tbody");
+
+  for (const row of rows) {
+    const tr = el("tr");
+    // A Conversation stores version_id, not a label -- the label is the console's
+    // word for it and could be renamed, the id is what actually happened. Resolved
+    // against the version list already in memory; the hash is shown either way,
+    // because that is the part that identifies the behavior.
+    const known = versions.find((v) => v.id === row.version_id);
+    const version = el("td");
+    version.append(
+      el("div", null, known ? known.label : "(unknown version)"),
+      el("div", "mono muted", row.config_hash),
+    );
+    // Seeded rows are marked so nobody mistakes canned data for something they
+    // just produced. Same reason the version label carries its hash: provenance
+    // beats a clean-looking screen.
+    const seeded = String(row.session_id).startsWith("seed-");
+    const when = el("td", "small muted");
+    when.append(el("div", null, new Date(row.created_at).toLocaleString()));
+    if (seeded) when.appendChild(el("span", "pill", "seeded"));
+
+    tr.append(
+      when,
+      el("td", "q small", row.question),
+      version,
+      el("td", "mono small", row.arm),
+      el("td", "mono small", row.experiment_tag || "—"),
+      el("td", row.terminated_by === "error" ? "fail small" : "small", row.terminated_by),
+      el("td", "mono small", "$" + (row.cost_usd ?? 0).toFixed(6)),
+    );
+
+    const detail = el("tr", "trow-detail");
+    detail.hidden = true;
+    const cell = el("td");
+    cell.colSpan = 7;
+    detail.appendChild(cell);
+    let built = false;
+    tr.addEventListener("click", () => {
+      detail.hidden = !detail.hidden;
+      if (built) return;
+      built = true;
+      // The question is in the row above as a summary column; repeating it here as
+      // a bubble is what makes an expanded row read as a transcript, the same way
+      // the other two tabs do.
+      cell.append(
+        el("div", "question", row.question),
+        el("div", "answer", row.answer || row.error || "(empty)"),
+      );
+      if (row.citations?.length) {
+        cell.appendChild(
+          el("div", "small muted", "cites: " + row.citations.map((c) => c.title).join(" · ")),
+        );
+      }
+      cell.appendChild(trajectoryView(row.trajectory || []));
+    });
+
+    body.append(tr, detail);
+  }
+  table.appendChild(body);
+  out.appendChild(table);
 }
 
 async function refreshRuns() {
@@ -833,7 +1085,7 @@ async function refreshEnv() {
   await Promise.all([refreshVersions(), refreshRuns(), refreshEnv()]);
   renderDatasetPreview();
   const active = versions.find((v) => v.status === "active") || versions[0];
-  if (active) loadDraft(active.config);
+  if (active) loadDraft(active.config, active.id);
 })();
 </script>
 </body>

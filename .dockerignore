@@ -1,0 +1,16 @@
+# Without this the build context is 179MB, almost all of it .venv, shipped to the
+# daemon on every build. The Dockerfile copies specific directories rather than
+# `COPY . .`, so nothing secret gets in today -- listing .env here means that
+# stays true even if someone later adds a broader COPY.
+.venv/
+.git/
+.gitignore
+data/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.env
+.env.bak
+.DS_Store
+.vscode/
+ai-discussion/

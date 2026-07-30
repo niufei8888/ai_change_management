@@ -152,12 +152,16 @@ cases:
       max_words: 120
     expectations:
       - policy: P1
-        expect: 只依据检索到的证据作答，不得引入证据之外的功能名或数字。
+        expect: Answers only from the retrieved evidence; must not introduce feature names or numbers that are not in the evidence.
 ```
 
-`observations` 里的东西可以设成硬门禁，`expectations` 不行——它会抖，而且 Step 2 的 judge 用的是与被评测对象同一个模型，存在自我评价偏袒（[TO-28](trade-offs.md)）。
+> 数据集全文用英文，包括手写的 `expect`。它是代码交付物的一部分，评审要能读（Step 3 §6）。这里的示例与 `datasets/golden.yaml` 的实际写法一致。
 
-### 10 条 golden case 的覆盖设计
+`observations` 里的东西可以设成硬门禁，`expectations` 不行——它会抖，而且 Step 2 的 judge 用的是与被评测对象同一个模型，存在自我评价偏袒（[TO-05](trade-offs.md)，原 TO-28）。
+
+### golden case 的覆盖设计（原计划 10 条，Step 2 砍到 3 条）
+
+> 下面这张清单是**最初的设想**，保留它是因为它记录了当时是怎么想覆盖面的。实际交付的是 3 条（[TO-13](trade-offs.md)）：`off-topic-jailbreak`、`covered`、`borderline-pressure`。砍到 3 条之后的补法不是加条数，而是**给每条加维度**——persona（暴躁 / 中性）让一条 case 同时考行为正确性和语气韧性。
 
 - 事实型（必须检索 + 引用）
 - 跨文章对比（Ray 3.2 与 Seedance 2.0）

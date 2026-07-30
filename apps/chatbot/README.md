@@ -1,167 +1,172 @@
 # Ask Luma
 
-一个只回答 Luma AI 产品文档问题的问答服务。内部是一个 ReAct 循环：先判断问题是否在范围内、要不要检索并规划检索词，检索本地文档，再判断证据是否足够，不够就再检索一轮（最多 3 轮），够了才作答；三轮都不够就诚实说不知道。
+A Q&A service that answers questions about Luma AI products and nothing else. Internally it is a ReAct loop: decide whether the question is in scope and whether to search, plan the query, search the local docs, decide whether the evidence is enough, search again if not (three rounds at most), and only then answer. If three rounds are not enough it says plainly that it does not know.
 
-设计文档：[ai-discussion/design_step1_ai_app.md](../../ai-discussion/design_step1_ai_app.md)
+Design doc: [ai-discussion/design_step1_ai_app.md](../../ai-discussion/design_step1_ai_app.md) (Chinese)
 
-这个服务是被管理的对象。管理它的变更安全系统在 [`apps/console/`](../console/README.md)（Driftline）。**本服务不依赖 `apps/console`**，两者共同依赖 `packages/agent`（同一个 ReAct 内核）和 `packages/behavior_core`（配置与表）。
+This service is the thing being managed. The system that manages changes to it lives in [`apps/console/`](../console/README.md) (Driftline). **This service does not depend on `apps/console`.** Both depend on `packages/agent` (the same ReAct kernel) and `packages/behavior_core` (config and tables).
 
-ReAct 内核在 `packages/agent`，不在这个文件夹里——因为 console 跑 benchmark 必须用 chatbot 服务用户时跑的**同一份代码**，内核放在 chatbot 里就得让 console import chatbot，那会让控制面依赖服务面。
+The kernel is in `packages/agent` rather than in this directory because the console's benchmark has to run **the same code** the chatbot serves users with. Keeping the kernel here would force the console to import the chatbot, which would make the control plane depend on the serving plane.
 
-所有命令都在**仓库根目录**执行，不是这个文件夹。整个 monorepo 只有根上一份 `pyproject.toml` 和一个 `.venv`。
+Every command below runs from the **repository root**, not from this directory. The whole monorepo has one `pyproject.toml` and one `.venv`.
 
 ---
 
-## 前置条件
+## Prerequisites
 
-- [uv](https://docs.astral.sh/uv/)（它会自己准备 Python 3.12+，不碰你系统的 Python）
-- 一个 Gemini API key（[Google AI Studio](https://aistudio.google.com/apikey) 免费额度够用）
+- [uv](https://docs.astral.sh/uv/) — it provisions its own Python 3.12+ and leaves your system Python alone
+- An API key for one provider (see below)
 
-> 注意：本项目用的是 **Gemini**，不是仓库题面 `.env.example` 里预置的 Anthropic / OpenAI。
+> This was built and measured on **Gemini** ([Google AI Studio](https://aistudio.google.com/apikey), the free tier is enough), which is not one of the keys the take-home's `.env.example` provisions. Anthropic and OpenAI are wired up as alternatives but were never run — see [TO-31](../../ai-discussion/trade-offs.md) and the comments in `.env.example`. The process refuses to start if `MODEL` names a provider whose key is missing, and says which variable it wants.
 
-前端是一个静态文件，**没有构建步骤**，所以不需要 Node（[TO-24](../../ai-discussion/trade-offs.md)）。
+The frontend is a single static file with **no build step**, so Node is not needed ([TO-22](../../ai-discussion/trade-offs.md)).
 
-## 语料必须先就位
+## The corpus has to be in place first
 
-服务启动时会把 `corpus/` 载入内存，**语料缺失会直接启动失败**。这是有意的：带着空索引启动的症状是「模型对所有问题都说不知道」，那看起来像 prompt 或模型的问题，排查方向会完全跑偏。
+The service loads `corpus/` into memory at startup and **fails to start if it is missing**. That is deliberate: booting with an empty index presents as "the model says it doesn't know to everything", which looks like a prompt or model problem and sends you debugging in entirely the wrong direction.
 
-仓库里已经提交了抓好的语料（39 篇）。要重抓：
+The fetched corpus (39 articles) is committed. To re-fetch:
 
 ```bash
-uv run python scripts/fetch_corpus.py            # 只抓缺的
-uv run python scripts/fetch_corpus.py --force    # 全部重抓
+uv run python scripts/fetch_corpus.py            # only what is missing
+uv run python scripts/fetch_corpus.py --force    # all of it
 ```
 
-抓取是**构建期的一次性动作**，服务运行时只读本地文件，不会访问 lumalabs.ai。
+Fetching is a **one-off build-time action**. At runtime the service only reads local files and never reaches lumalabs.ai.
 
 ---
 
-## 方式一：Native Python（推荐用于调试）
+## Option 1: native Python (best for debugging)
 
 ```bash
-uv sync                                  # 建 .venv 并装依赖
-cp .env.example .env                     # 然后填 GEMINI_API_KEY
+uv sync                                  # create .venv and install
+cp .env.example .env                     # then fill in your provider's key
 
-uv run python -m ask_luma.cli init-db    # 建表 + 把当前 BASELINE_V1 设为 active
+uv run python -m ask_luma.cli init-db    # create tables, make BASELINE_V1 active
+uv run python scripts/seed_demo.py load  # optional: real pre-computed data to look at
 
-# 只跑 chatbot
+# chatbot only
 uv run uvicorn ask_luma.main:app --reload --port 8000
 
-# chatbot + console 同一个进程（推荐，见 apps/console/README.md）
+# chatbot + console in one process (recommended, see apps/console/README.md)
 uv run uvicorn server.main:app --reload --port 8000
 ```
 
-打开 http://localhost:8000 （console 在 http://localhost:8000/console ）
+Open <http://localhost:8000>; the console is at <http://localhost:8000/console>.
 
-`init-db` 是**幂等自愈**的：它保证代码里 `BASELINE_V1` 的 `config_hash` 就是数据库里 active 的那一个。改了 `config.py` 里的 prompt 常量之后重跑它即可——旧版本会被标成 `archived` 而不是删掉。「active 版本的 hash 对不上源码里任何 config」正是这个项目要消灭的那类不可见漂移。
+`init-db` is **idempotent and self-healing**: it guarantees the `config_hash` of `BASELINE_V1` in the code is the one marked active in the database. Re-run it after editing a prompt constant in `config.py` — older rows become `archived` rather than being deleted. "The active version's hash matches no config in the source" is precisely the kind of invisible drift this project exists to remove.
 
-改前端直接改 `apps/chatbot/web/index.html` 然后刷新浏览器就行。视觉 token 是文件顶部那段 `:root` CSS 变量，风格参照 Anthropic Claude：暖白纸感背景、衬线标题配无衬线正文、陶土橙作唯一强调色，自动跟随系统深色模式。
+To change the frontend, edit `apps/chatbot/web/index.html` and reload the browser. The visual tokens are the `:root` block at the top of the file, following Anthropic's Claude: warm paper background, serif headings over sans-serif body, terracotta as the only accent, and it follows the system dark mode.
 
-等待期间只显示一个统一的 thinking 指示，**不显示每一步在做什么**（[TO-17](../../ai-discussion/trade-offs.md)）。完整轨迹在答案返回后通过折叠面板查看。
+While a request is in flight the UI shows one generic thinking indicator and **not what each step is doing** ([TO-17](../../ai-discussion/trade-offs.md)). The full trajectory is available in a collapsible panel once the answer arrives.
 
-### 调试用的几个入口
+### Debugging entry points
 
 ```bash
-# 不开浏览器，直接问一句并打印完整轨迹
+# ask one question and print the whole trajectory, no browser
 uv run python -m ask_luma.cli ask "What is a Skill in Luma?"
 
-# 只测检索，不花 API 配额
+# exercise retrieval only, spends no API quota
 uv run python -m ask_luma.cli search "share a skill with teammates"
 
-# 列出这个 key 实际能用的模型，用来给 MODEL 挑一个具体版本
+# list the models this key can actually reach, to pick a pinned version for MODEL
 uv run python -m ask_luma.cli models
 
-# 逐节点详细日志
+# per-node logging
 LOG_LEVEL=debug uv run uvicorn server.main:app --reload --port 8000
 ```
 
-### 唯一的测试
+### The only test
 
 ```bash
 uv run python scripts/smoke.py
 ```
 
-**没有单元测试**（[TO-23](../../ai-discussion/trade-offs.md)）。这是 demo 不是 production system，而且这个项目的主题恰恰是「用 Step 2 的 benchmark 防 AI 行为回归」——golden dataset 加 judge 就是本项目版本的回归测试，跑法见 [apps/console/README.md](../console/README.md)。
+**There are no unit tests** ([TO-22](../../ai-discussion/trade-offs.md)). This is a demo, not a system to maintain, and the entire subject of the project is using the step 2 benchmark to catch AI behavior regressions — the golden dataset plus the judge is this project's version of a regression suite. See [apps/console/README.md](../console/README.md) for how to run it.
 
-`smoke.py` 跑四条真实路径并把轨迹打出来：文档覆盖的问题、文档没覆盖的问题、跟 Luma 无关的问题，以及**收紧 `in_scope` 规则之后合法问题被拒答**的那条。最后一条是 Step 2 整个高光 demo 的前提，所以在 Step 1 就要验证它走得通——**原定用 `tool_description` 做这个 demo，实测五种改法全都不成立**，详见 [design_step1_ai_app.md §14.1](../../ai-discussion/design_step1_ai_app.md)。
+`smoke.py` exercises four real paths and prints the trajectories: a question the docs cover, a question they do not, a question with nothing to do with Luma, and **a legitimate question being refused after the `in_scope` rule is tightened**. That last one is the premise of step 2's whole headline demo, which is why it is verified here in step 1 — **the demo was originally going to use `tool_description`, and all five attempts at that failed to reproduce**. See [design_step1_ai_app.md §14.1](../../ai-discussion/design_step1_ai_app.md).
 
-只跑最后一条（省配额）：`uv run python scripts/smoke.py regression`
+To run just that last case and save quota: `uv run python scripts/smoke.py regression`
 
-### 断点调试
+### Breakpoints
 
-`--reload` 模式下可以直接用编辑器的 debugger attach。想看 ReAct 循环的行为，断点打在这三个地方最有用：
+Under `--reload` you can attach an editor debugger directly. Three places are worth a breakpoint if you want to watch the ReAct loop:
 
-- `packages/agent/graph/runner.py` — 循环的进出条件和上限判断
-- `packages/agent/graph/reflect.py` — `resolved` 的判定，这里决定了会不会再来一轮
-- `packages/agent/search.py` — 打分与「返回空结果」的门槛
+- `packages/agent/graph/runner.py` — loop entry/exit conditions and the cap
+- `packages/agent/graph/reflect.py` — the `resolved` decision, which is what determines whether there is another round
+- `packages/agent/search.py` — scoring, and the threshold below which it returns nothing
 
-代码是 **let-it-fail 风格**（[TO-22](../../ai-discussion/trade-offs.md)）：默认不接错误，出问题就带着完整 traceback 崩在原地。全项目只有三处有错误处理——`llm.py` 里对 429 / 超时 / 5xx 的 `tenacity` 重试，`main.py` 路由边界那个「落一条带 `error` 的 Conversation 再返回 502」，以及 console 的 benchmark runner 里逐 case 的隔离。**调试时不用去找哪里把异常吞了，因为除这三处外没有任何地方吞异常。**
+The code is **let-it-fail** ([TO-22](../../ai-discussion/trade-offs.md)): errors are not caught, and a problem crashes where it happens with a full traceback. There are exactly three pieces of error handling in the project — `tenacity` retrying 429 / timeout / 5xx in `llm.py`, the route boundary in `main.py` that writes a `Conversation` carrying `error` and returns 502, and per-case isolation in the console's benchmark runner. **When debugging you never have to hunt for the place that swallowed an exception, because outside those three nothing does.**
 
 ---
 
-## 方式二：Docker Compose（推荐用于部署）
+## Option 2: Docker Compose (best for handing it to someone)
 
 ```bash
-cp .env.example .env                     # 然后填 GEMINI_API_KEY
+cp .env.example .env                     # then fill in your provider's key
 docker compose up --build
 ```
 
-打开 http://localhost:8000
+Open <http://localhost:8000>.
 
-单阶段纯 Python 镜像，**单进程 uvicorn**。前端没有构建步骤所以没有 Node 阶段，语料直接烤进镜像所以容器运行时不需要任何外网访问。首次启动自动建表并写入 v1 baseline 版本。
+Single-stage pure Python image, **one uvicorn process**. No Node stage because the frontend has no build step, and the corpus is baked into the image so the running container needs no network access at all. Tables are created and the v1 baseline is written on first start.
 
-`./data` 挂进容器作为 SQLite 目录，数据在容器重建后保留。
+`./data` is mounted as the SQLite directory, so data survives a rebuild. If you have no `.env`, the container still starts and then exits with a message naming the environment variable it wants — a missing credential should not present as a missing file.
 
 ```bash
-docker compose logs -f      # 看日志
-docker compose down         # 停止（数据保留在 ./data）
+docker compose logs -f      # follow logs
+docker compose down         # stop; ./data is kept
 ```
 
 ---
 
-## 配置
+## Configuration
 
-`.env` 里的键分两类，区别很重要。
+There are two kinds of key in `.env`, and the distinction matters.
 
-### 系统层设置（所有版本共享，改它等于换掉整个基线）
+### System-level settings (shared by every version; changing one replaces the whole baseline)
 
-| 键 | 说明 |
+| Key | Notes |
 | --- | --- |
-| `GEMINI_API_KEY` | 必填。不要提交。 |
-| `MODEL` | 填**具体版本号**，不要用 `gemini-flash-latest` 这类别名——别名会漂移，而漂移会伪装成「我改的 prompt 导致了行为变化」。 |
-| `DB_PATH` | 默认 `./data/app.db`。 |
-| `LOG_LEVEL` | `info` / `debug`。 |
+| `MODEL` | `gemini/…`, `anthropic/…` or `openai/…`. Give a **pinned version**, not a `-latest` alias — aliases drift, and the drift masquerades as "the prompt I edited changed the behavior". |
+| `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Whichever one `MODEL` needs. Never commit it. |
+| `DB_PATH` | Defaults to `./data/app.db`. |
+| `LOG_LEVEL` | `info` / `debug`. |
 
-### 行为配置（被版本化的六个杠杆，**不在 `.env` 里**）
+### Behavior configuration — the four versioned levers, **not in `.env`**
 
-`plan_prompt`、`reflect_prompt`、`synthesize_prompt`、`tool_description`、`temperature`、`max_loops`
+`plan_prompt`, `reflect_prompt`, `synthesize_prompt`, `tool_description`
 
-这些存在数据库的 `Version` 表里，通过 `packages/behavior_core` 的 `config_client` 在**每次请求时**解析。这样才能不重新部署就切换版本、按比例灰度放量、以及即时回滚——这是 Step 2 的整套能力赖以存在的前提。
+These live in the `Version` table and are resolved **on every request** through `config_client` in `packages/behavior_core`. That is what makes it possible to switch versions without a deploy, ramp a percentage of traffic, and roll back instantly — everything step 2 does rests on it.
 
-想改行为，改数据库里的版本记录（Step 2 会给这件事一个界面），**不要把 prompt 写死进代码**。`packages/behavior_core/config.py` 里的 `BASELINE_V1` 只是首次启动时写进数据库的种子，不是运行时读的东西。
+Temperature and the loop cap used to be levers and were cut ([TO-06](../../ai-discussion/trade-offs.md)). They are now constants — `TEMPERATURE` in `packages/agent/llm.py`, `MAX_LOOPS` in `packages/agent/graph/runner.py` — and deliberately not environment variables, because a knob that quietly differs between two machines makes their evaluation results incomparable.
+
+To change behavior, change the version row (the console gives that a UI). **Do not hardcode prompts.** `BASELINE_V1` in `packages/behavior_core/config.py` is only the seed written on first start; it is not what gets read at runtime.
 
 ---
 
-## 接口
+## Endpoints
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/api/chat` | `{session_id, question}` → 回答 + 引用 + 完整轨迹元数据 |
-| `GET` | `/api/conversations` | 按 `session_id`（前端恢复历史）或 `tag` / `arm`（Step 2 切片）过滤 |
-| `GET` | `/api/health` | 含 `corpus_hash`、`article_count`、当前生效版本 |
+| `POST` | `/api/chat` | `{session_id, question}` → answer, citations, full trajectory metadata |
+| `GET` | `/api/conversations` | filtered by `session_id` (the frontend restoring history) or `tag` / `arm` (experiment slices) |
+| `GET` | `/api/health` | includes `corpus_hash`, `article_count`, the active version |
 
-一共就这三个，没有 debug 端点。**语料目录不对外暴露**——检索到的文章是喂给模型的上下文，不是给用户浏览的目录；引用信息跟着 `/api/chat` 的响应一起回来（[TO-19](../../ai-discussion/trade-offs.md)）。
+Three, and no debug endpoints. **The corpus is not exposed** — retrieved articles are context for the model, not a directory for users to browse; citations come back with the `/api/chat` response instead ([TO-17](../../ai-discussion/trade-offs.md)).
 
-`POST /api/chat` 的响应里带 `terminated_by`（`answered` / `exhausted` / `refused_out_of_scope`）、`loop_count`、`llm_call_count` 和逐节点的 `trajectory`。前端那个「这个回答是怎么产生的」折叠面板就是在渲染它。
+The `POST /api/chat` response carries `terminated_by` (`answered` / `exhausted` / `refused_out_of_scope`), `loop_count`, `llm_call_count` and a per-node `trajectory`. The frontend's "how this answer was produced" panel is rendering exactly that.
 
-## 常见问题
+## Troubleshooting
 
-**启动报语料缺失** — 跑 `uv run python scripts/fetch_corpus.py`。
+**Startup complains the corpus is missing** — run `uv run python scripts/fetch_corpus.py`.
 
-**回答里带 `Source:` 但文章名对不上** — 检查 `corpus/index.json` 是否和 `corpus/*.md` 一致；`index.json` 是「合法文章标题」的唯一权威来源。
+**Startup complains about a key** — `MODEL` names a provider whose key is unset. The message says which variable; see `.env.example`.
 
-**大量 429** — 免费额度限流。ReAct 循环每个问题要 3–5 次 LLM 调用，比一般单次问答费配额。等额度恢复，或用 `cli ask` 单条测试而不是跑整个 smoke。
+**A `Source:` line names an article that does not exist** — check that `corpus/index.json` agrees with `corpus/*.md`. `index.json` is the single source of truth for what counts as a real article title.
 
-**回答总是「我不知道」** — 先看 `/api/health` 的 `article_count` 是否为 0（语料没载入）；再看轨迹里的 `terminated_by`，如果一直是 `exhausted`，说明检索门槛偏严或 `reflect` 判定过于严格。
+**Lots of 429s** — free-tier rate limiting. The ReAct loop spends 3–5 LLM calls per question, so it burns quota faster than a single-shot Q&A. Wait for the window, or test one question with `cli ask` instead of running the whole smoke script.
 
-**`MODEL` 该填什么** — 跑 `uv run python -m ask_luma.cli models` 看这个 key 实际能用哪些。
+**Every answer is "I don't know"** — check whether `/api/health` reports `article_count: 0` (corpus did not load); then look at `terminated_by` in the trajectory. If it is always `exhausted`, either the retrieval threshold is too strict or `reflect` is being too demanding.
+
+**What should `MODEL` be** — run `uv run python -m ask_luma.cli models` to see what your key can reach.

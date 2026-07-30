@@ -16,6 +16,18 @@
     --hairline: #e8e5de;
     --accent: #c9765a;      /* terracotta, the only accent in the app */
     --radius: 8px;
+
+    /* The two message backgrounds. Mixed against `transparent` rather than a named
+       colour so one declaration composites correctly over the paper page here and
+       over the white cards in the console -- no hand-matched hex pairs to drift
+       apart, and dark mode follows for free.
+
+       Same percentage, different pigment: the user's turn borrows the accent and
+       the assistant's borrows the text colour. Tinting both with the accent would
+       have separated them by hue alone, which is the one axis that disappears for
+       a colourblind reader; this way they differ in lightness too. */
+    --msg-user: color-mix(in srgb, var(--accent) 8%, transparent);
+    --msg-bot: color-mix(in srgb, var(--text) 8%, transparent);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,12 +54,15 @@
 
   .exchange { margin-bottom: 56px; }
   .question {
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 28px;
+    background: var(--msg-user);
+    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px;
     font-weight: 500;
   }
-  /* The answer is not a chat bubble. It is the content of the page. */
-  .answer { white-space: pre-wrap; }
+  .answer {
+    white-space: pre-wrap;
+    background: var(--msg-bot);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
   .answer h2, .answer h3 {
     font-family: "Source Serif 4", Georgia, serif; font-weight: 600;
     margin: 28px 0 8px; font-size: 19px;

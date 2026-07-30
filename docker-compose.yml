@@ -3,6 +3,21 @@ services:
     build: .
     ports:
       - "8000:8000"
-    env_file: .env
+    # `required: false` on purpose. With a plain `env_file: .env`, a reviewer who
+    # clones and runs the documented one-command setup gets
+    # "env file /path/.env not found" and no container at all -- an error that
+    # never mentions the thing actually missing, which is an API key. Letting the
+    # container start means the startup check in packages/agent/llm.py gets to say
+    # so in words. Fail close to the cause.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Passed through from the host shell if set, so `MODEL=... docker compose up`
+      # works without editing a file.
+      - MODEL
+      - GEMINI_API_KEY
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
     volumes:
       - ./data:/app/data

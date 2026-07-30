@@ -23,6 +23,7 @@ WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    llm.require_key()
     init_db()
     corpus.load()
     yield

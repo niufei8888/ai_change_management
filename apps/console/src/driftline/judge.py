@@ -96,7 +96,9 @@ def run(case: Case, outcome: runner.Outcome) -> tuple[list[dict], llm.LLMResult 
         f"EXPECTATIONS TO JUDGE\n{listed}"
     )
 
-    output, result = llm.call_structured(JUDGE_SYSTEM, user, JUDGE_TEMPERATURE, JudgeOutput)
+    output, result = llm.call_structured(
+        JUDGE_SYSTEM, user, JudgeOutput, temperature=JUDGE_TEMPERATURE
+    )
 
     by_index = {v.index: v for v in output.verdicts}
     verdicts = []

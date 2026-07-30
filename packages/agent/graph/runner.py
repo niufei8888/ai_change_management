@@ -13,6 +13,16 @@ from agent import llm, search
 from agent.graph import plan, reflect, synthesize
 from behavior_core.config import BehaviorConfig
 
+# The loop cap. A controlled variable, not a lever: it used to be one of the
+# versioned six and was cut in step 3 (TO-06). Three is what the corpus needs --
+# most questions resolve in one round, two-hop questions need two, and a third
+# round almost never adds evidence but does cost a full LLM call.
+#
+# Raising it trades cost and latency for recall, which makes it a genuine
+# product-level decision; it is a constant here because it did not earn its space
+# in the console, not because the tradeoff stopped being real.
+MAX_LOOPS = 3
+
 
 @dataclass
 class Outcome:
@@ -76,7 +86,7 @@ def run(question: str, config: BehaviorConfig) -> Outcome:
     seen_chunks: set[tuple[str, str]] = set()
     query = decision.query or question
 
-    while decision.needs_search and outcome.loop_count < config.max_loops:
+    while decision.needs_search and outcome.loop_count < MAX_LOOPS:
         outcome.loop_count += 1
         search_started = time.perf_counter()
         hits = search.search_docs(query)

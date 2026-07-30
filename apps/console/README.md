@@ -1,117 +1,128 @@
 # Driftline
 
-引入、评测、管理 Ask Luma 的行为变更的控制台。左边编辑六个被版本化的杠杆，右边两个 tab：**Conversation** 用草稿配置跑单轮对话并摊开全部中间状态，**Simulation** 用草稿配置跑 golden dataset。
+The console for introducing, evaluating and managing changes to Ask Luma's behavior. The left pane edits the four versioned levers — one prompt per node in the ReAct loop, plus the tool description. The right pane has three tabs: **Conversation** runs one turn with the draft config and lays out every intermediate state, **Simulation** runs the golden dataset against it, and **Production** shows real traffic with the behavior version that produced each answer.
 
-设计文档：[ai-discussion/design_step2_console_with_benchmark.md](../../ai-discussion/design_step2_console_with_benchmark.md)
+Design docs (Chinese): [design_step2_console_with_benchmark.md](../../ai-discussion/design_step2_console_with_benchmark.md) for the console and the benchmark, [design_step3_misc_and_wrap_up.md](../../ai-discussion/design_step3_misc_and_wrap_up.md) for the two signposted non-goals below.
 
-被管理的对象是 `apps/chatbot`。**本服务不 import 它**——两者都依赖 `packages/agent`（同一个 ReAct 内核）和 `packages/behavior_core`（配置、版本、表）。这不只是洁癖：console 跑 benchmark 用的必须是 chatbot 服务用户时跑的**同一份代码**，否则「benchmark 测的是 production 的行为」就从结构事实退化成一句声明。
+The thing being managed is `apps/chatbot`. **This service does not import it** — both depend on `packages/agent` (the same ReAct kernel) and `packages/behavior_core` (config, versions, tables). That is not tidiness: the benchmark has to run the same code the chatbot serves users with, or "the benchmark measures production behavior" degrades from a structural fact into a claim.
 
-所有命令都在**仓库根目录**执行。
+Every command runs from the **repository root**.
 
 ---
 
-## 启动
+## Start it
 
 ```bash
 uv sync
-uv run python -m ask_luma.cli init-db          # 建表 + 把当前 BASELINE_V1 设为 active
+uv run python -m ask_luma.cli init-db          # create tables, make BASELINE_V1 active
+uv run python scripts/seed_demo.py load        # optional: real pre-computed runs to look at
 uv run uvicorn server.main:app --reload --port 8000
 ```
 
-- 控制台 <http://localhost:8000/console>
-- 被管理的 chatbot <http://localhost:8000/>
+- The console: <http://localhost:8000/console>
+- The chatbot it manages: <http://localhost:8000/>
 
-`server.main` 是唯一同时 import 两个 app 的模块（[TO-21](../../ai-discussion/trade-offs.md)）。**同进程有个实际好处**：`config_client` 那个 5 秒缓存在进程内存里，所以 console 里 Activate 之后 `invalidate()` 失效的正是 chatbot 读的那份缓存，下一个请求立刻拿到新版本。分成两个进程也能跑，只是最多滞后 5 秒。
+`server.main` is the only module that imports both apps ([TO-08](../../ai-discussion/trade-offs.md)). **One process buys something real**: `config_client`'s five-second cache lives in process memory, so an Activate in the console invalidates the exact cache the chatbot reads and the next request picks up the new version immediately. Two processes also work, with up to five seconds of lag.
 
-## 两类断言
+Running `seed_demo.py load` is worth it on a fresh database. It inserts real exported rows — two benchmark runs (a green baseline and the regression being caught), a few conversations covering all three terminal states, and the versions they refer to. Without an API key it is the only way to see a populated console; with one, it saves 80 seconds and a chunk of the rate limit before you have anything to look at. Seeded conversations are marked in the Production tab so canned data is never mistaken for something you just produced.
 
-一条 golden case 分两半，这个区分是整套评测的骨架：
+## Two kinds of assertion
+
+A golden case splits in half, and that split is the skeleton of the whole evaluation:
 
 | | fixed observation | dynamic expectation |
 | --- | --- | --- |
-| 是什么 | 关于「实际发生了什么」的事实 | 关于「回答该是什么样」的判断 |
-| 谁判 | 确定性检查，读轨迹和输出，零 LLM | LLM judge |
-| 可复现 | 是 | 否，会抖（[TO-12](../../ai-discussion/trade-offs.md)） |
-| 门禁性质 | **blocking** | **advisory**，UI 标注「单次采样」 |
+| what it is | a fact about what actually happened | a judgement about what the answer should be like |
+| who decides | a deterministic check reading the trajectory and output, no LLM | an LLM judge |
+| reproducible | yes | no, it wobbles ([TO-10](../../ai-discussion/trade-offs.md)) |
+| gating | **blocking** | **advisory**, labelled "single sample" in the UI |
 
-`BenchResult.passed` **只由 fixed observation 决定，代码上根本不读 `verdicts`**。judge 用的是跟被评测对象同一个模型（[TO-28](../../ai-discussion/trade-offs.md)），既会抖又存在自我评价偏袒，这种信号不能有能力把一次 run 判成绿的。
+`BenchResult.passed` is decided **by fixed observations alone; the code never reads `verdicts`**. The judge is the same model as the thing being evaluated ([TO-05](../../ai-discussion/trade-offs.md)), so it both wobbles and is systematically lenient about its own output. A signal like that must not be able to turn a run green.
 
-judge **看得到**工具调用的 tag 和 `terminated_by`，但不由它出这两条判定——给它看是为了让语义判定有依据（能说出「这句话没出处，因为这一轮什么都没检索到」）。同一个事实，一处做门禁，一处做解释。
+The judge **can see** the tool-call tag and `terminated_by`, but does not decide them. It gets them so its semantic judgement has something to stand on — so it can say "this sentence has no source, because nothing was retrieved in that round". The same fact, gating in one place and explanatory in the other.
 
-## 不开浏览器也能跑
+## It runs without a browser
 
 ```bash
-uv run python -m driftline.cli dataset          # 解析并打印数据集，零 API 调用
-uv run python -m driftline.cli bench            # 当前 active 版本
-uv run python -m driftline.cli bench baseline   # 代码里的 BASELINE_V1
-uv run python -m driftline.cli bench bad-scope  # BAD_SCOPE_V2，这个 benchmark 存在的理由
+uv run python -m driftline.cli dataset          # parse and print the dataset, zero API calls
+uv run python -m driftline.cli bench            # the active version
+uv run python -m driftline.cli bench baseline   # BASELINE_V1 from the code
+uv run python -m driftline.cli bench bad-scope  # BAD_SCOPE_V2, the reason this benchmark exists
 ```
 
-设计上的检查点：`bench.py` 和 `judge.py` **必须先在命令行跑通再做前端**，这样一个红色结果一定是 chatbot 的行为问题，不会是前端的取数 bug。
+A checkpoint from the design: `bench.py` and `judge.py` **had to work from the command line before any frontend existed**, so that a red result is unambiguously the chatbot's behavior and never a fetch bug in the UI.
 
 ```bash
-# 不花配额，验断言机制本身：改名会不会被抓、字面 { 会不会崩、
-# passed 会不会被 verdict 污染、两个 app 有没有互相 import、单 case 报错会不会带走整批
+# spends no quota; checks the assertion machinery itself: does a tool rename get
+# caught, does a literal { crash, can a verdict contaminate passed, do the two apps
+# import each other, does one case blowing up take the batch with it
 uv run python scripts/check_assertions.py
 
-# 走 HTTP 驱动 Simulation 跑那条回归（需要服务已启动）
+# drive a Simulation of the regression over HTTP (needs the server running)
 uv run python scripts/regression_demo.py
 ```
 
-## 配额是硬约束，不是优化项
+## The rate limit is a constraint, not an optimisation
 
-免费额度 **15 次请求/分钟**。一次完整 Simulation = 3 条 case ×（3–5 次 chatbot 调用 + 1 次 judge 调用）= **12–18 次**，必然贴着上限。所以 runner 是**串行 + 节流**（case 之间等 20 秒），一次 run 约 50–80 秒。并发在这里不会更快，只会把时间花在退避上。
+The free tier allows **15 requests per minute**. One full Simulation is 3 cases × (3–5 chatbot calls + 1 judge call) = **12–18 requests**, which sits right against the ceiling. So the runner is **serial and throttled** (20 seconds between cases) and a run takes 50–80 seconds. Concurrency would not be faster here; it would just spend the time in backoff.
 
-两个缓解手段：
+Two mitigations:
 
-- **结果缓存**，键是 `config_hash` + `dataset_hash` + `corpus_hash` + `case_id`。同一份配置重跑秒出、零成本。`corpus_hash` 必须在键里——重抓语料会改变检索结果，少了它，缓存会拿旧语料下的行为冒充现在的行为。
-- **逐 case 错误隔离**。这是全项目第三处、也是最后一处错误处理（[TO-22](../../ai-discussion/trade-offs.md) 的明确例外）：一条 case 崩了记成那条的 `BenchResult.error`，不带走整批。第一条崩掉顺带藏掉后两条的结果，比一行红色糟得多。
+- **Result caching**, keyed on `config_hash` + `dataset_hash` + `corpus_hash` + `case_id`. Re-running the same config is instant and free. `corpus_hash` has to be in the key — re-fetching the corpus changes what retrieval returns, and without it the cache would pass off behavior under the old corpus as current behavior.
+- **Per-case error isolation.** This is the third and last piece of error handling in the project (an explicit exception to [TO-22](../../ai-discussion/trade-offs.md)): a case that blows up is recorded as that case's `BenchResult.error` and the batch continues. Having the first case's crash also hide the other two results is much worse than one red line.
 
 ## `#search_docs`
 
-prompt 里引用工具写 `#search_docs`，由 `packages/agent/tools.py` 的 `expand_tools()` 展开成 `tool_description` 杠杆的当前值。编辑器里打 `#` 弹出补全，已输入的 mention 在下方预览里渲染成 chip 并显示它展开成什么。
+Prompts refer to tools as `#search_docs`, expanded by `expand_tools()` in `packages/agent/tools.py` into the current value of the `tool_description` lever. Typing `#` in the editor opens autocomplete, and an existing mention renders as a chip in the preview below showing what it expands to.
 
-它取代了原来的 `{tool_description}` 占位符：prompt 一旦是 UI 里的自由文本，作者打一个字面的 `{` 就会让 `str.format()` 在 `plan.run()` 里抛 `KeyError`——崩的地方跟他改的地方隔着好几层。详见 [TO-26](../../ai-discussion/trade-offs.md)。
+It replaced a `{tool_description}` placeholder: once a prompt is free text in a UI, an author typing a literal `{` makes `str.format()` raise `KeyError` inside `plan.run()` — several layers away from anything they touched. See [TO-26](../../ai-discussion/trade-offs.md).
 
-工具名只有 `packages/agent/search.py` 的 `TOOL_NAME` 一处定义，三个地方必须对上：prompt 里的 mention、轨迹里 search 节点的 `tool` 字段、`datasets/golden.yaml` 里的 `tool_called.name`。断言读 `tool` 字段而**不是** `node` 名——读 node 名的话工具改名后断言会永远静默 pass，那比没有断言更糟，因为它制造虚假的安全感。
+The tool name is defined in exactly one place, `TOOL_NAME` in `packages/agent/search.py`, and three things have to agree: the mention in the prompt, the `tool` field on the search node in the trajectory, and `tool_called.name` in `datasets/golden.yaml`. The assertion reads the `tool` field and **not** the `node` name — reading the node name would make the assertion pass silently forever after a rename, which is worse than having no assertion because it manufactures confidence.
 
-## 数据集
+## The dataset
 
-`datasets/golden.yaml`，YAML 而非入库（[TO-14](../../ai-discussion/trade-offs.md)）。数据集是**输入**：改一条断言就是改产品被held 的标准，必须走代码评审、必须能 diff。放数据库里就成了「谁在什么时候悄悄放松了一条检查」的藏身处。
+`datasets/golden.yaml`, a file rather than a table ([TO-13](../../ai-discussion/trade-offs.md)). The dataset is an **input**: changing an assertion changes the standard the product is held to, so it has to go through code review and has to be diffable. In a database it becomes the hiding place for "who quietly loosened a check, and when".
 
-解析器只认 7 个 observation key，**遇到不认识的直接抛**。拼错的 key 被静默忽略的话，那条断言就什么都不做了——「写了但不跑」比没写更危险。
+The parser recognises exactly 7 observation keys and **raises on anything else**. A misspelled key that is silently ignored is an assertion that does nothing — "written but not running" is more dangerous than not written.
 
-`covered` 那条 case 的问法是用 `scripts/probe_scope.py` 和 `scripts/probe_stability.py` 筛出来的，不是想出来的。理由见 [TO-29](../../ai-discussion/trade-offs.md) 和 YAML 里的注释：第一版手写的问法让回归静默溜过了整个数据集。
+The wording of the `covered` case was selected with `scripts/probe_scope.py` and `scripts/probe_stability.py` rather than written by hand. The reason is in [TO-29](../../ai-discussion/trade-offs.md) and in the YAML comments: the first hand-written wording let the regression walk past the entire dataset unnoticed.
 
-## 接口
+## Endpoints
 
-全部在 `/api/console` 下。
+All under `/api/console`.
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/versions` | 版本列表（active / draft / archived），带整份 config |
-| `POST` | `/versions` | 存草稿为一个新版本 |
-| `POST` | `/versions/{id}/activate` | 100% 切换 + `config_client.invalidate()` |
-| `GET` | `/tools` | `#` 补全菜单的数据源 |
-| `GET` | `/dataset` | persona / case / observations / expectations 全文 |
-| `POST` | `/playground/chat` | body 带整份 config，返回回答 + 完整轨迹 + 证据 + 展开后的 prompt |
-| `POST` | `/simulate` | body 带整份 config，起 BackgroundTask，返回 `run_id` |
-| `GET` | `/runs/{id}` | 一次 run 的状态 + 已完成的 BenchResult（前端轮询） |
-| `GET` | `/runs` | 历史 run 列表 |
-| `GET` | `/health` | model / `corpus_hash` / `dataset_hash` / case 数 / `TOOL_REGISTRY` |
+| `GET` | `/versions` | version list (active / draft / archived) with the full config |
+| `POST` | `/versions` | save the draft as a new version |
+| `POST` | `/versions/{id}/activate` | 100% switch plus `config_client.invalidate()` |
+| `GET` | `/tools` | the data behind `#` autocomplete |
+| `GET` | `/dataset` | personas, cases, observations, expectations in full |
+| `POST` | `/playground/chat` | body carries the whole config; returns answer, trajectory, evidence, expanded prompts |
+| `POST` | `/simulate` | body carries the whole config; starts a BackgroundTask, returns `run_id` |
+| `GET` | `/runs/{id}` | one run's status plus the BenchResults finished so far (the frontend polls this) |
+| `GET` | `/runs` | past runs |
+| `GET` | `/health` | model, `corpus_hash`, `dataset_hash`, case count, `TOOL_REGISTRY` |
 
-**Playground 的对话不写 `Conversation` 表。** 那张表的语义是「真实流量」，把试验混进去，「这个版本在生产里表现如何」就再也答不清了。
+The Production tab reads `GET /api/conversations`, which belongs to the chatbot. That is not the boundary violation it looks like: the rule is about Python imports, and one process serves both apps on one origin, so a page fetching an HTTP endpoint has not crossed anything.
 
-轮询而不用 SSE：一次 run 每跑完一条 case 就落一行，轮询天然拿到逐 case 进度（[TO-17](../../ai-discussion/trade-offs.md) 对 `/chat` 是同样的判断）。
+**Playground conversations are not written to the `Conversation` table.** That table means real traffic; mixing experiments into it makes "how is this version doing in production" permanently unanswerable.
 
-## 本步不做什么
+Polling rather than SSE: a run writes one row per case as it finishes, so polling gets per-case progress for free ([TO-17](../../ai-discussion/trade-offs.md) reached the same conclusion for `/chat`).
 
-**灰度放量和自动回滚不做**（Step 3）。Activate 是**整体 100% 切换**，不是按比例。`Experiment` 表和 `Conversation.arm` / `experiment_tag` 都留着不删——删掉意味着改 Step 1 已经跑通的代码，净增工作量。
+## Two things deliberately not built
 
-**Simulation 只单跑，不并排对比基线**（[TO-25](../../ai-discussion/trade-offs.md)）。所以看不到「这条 case 从 pass 翻成 fail」，只能看到「这条 case 现在是 fail」。结果按 `config_hash` 落库，后面加对比视图不用改数据模型。
+Both are visible in the UI rather than left as blank space, because blank space and a deliberate omission look identical to someone reading the screen.
 
-## 已知限制
+**Gradual rollout has no control surface.** Activate is a **100% switch**. The runtime for splitting traffic, however, is already on the request path and runs on every single request: `config_client.resolve()` buckets by a salted hash of `session_id`, compares against `rollout_pct`, and stamps `arm` and `experiment_tag` onto both the response and the stored conversation. What is missing is a way to create an `Experiment` row and a ramp policy — health thresholds, a step schedule, an auto-rollback trigger. The left pane shows the controls that would drive it, disabled.
 
-- P6 只覆盖 **jailbreak**（用户在自己那一轮里要求模型违背指令），**未覆盖数据通道的 prompt injection**（恶意指令藏在被检索回来的文档里）。后者要求往 `corpus/` 里种投毒文本，语料就不再忠于原站，`corpus_hash` 的语义也跟着废掉。
-- judge 用与被评测对象同一个模型：自我评价偏袒 + 模型一换历史 verdict 不可比。
-- 3 条 case、每条单次采样，统计意义弱。UI 上明示 `n=1`。修这个的方向是**给每条 case 加维度**（persona 就是一个），而不是堆 case 数量。
+**Production traffic cannot be sliced by tag.** `GET /api/conversations` already accepts `?tag=` and `?arm=`, and `experiment_tag` is indexed, so the query path exists and is what the Production tab reads through. Not built on top of it: filtering and search by tag, a baseline-vs-candidate comparison, promoting a production conversation into `datasets/golden.yaml` as a new case, and re-running the judge over a tagged slice on a schedule with a violation-rate threshold. For that last one the missing pieces are the schedule and the threshold — not the judge, and not the data.
+
+**Simulation runs alone; it does not show the baseline side by side** ([TO-25](../../ai-discussion/trade-offs.md)). So you see "this case is failing" rather than "this case flipped from pass to fail". Results are stored keyed by `config_hash`, so adding a comparison view later needs no change to the data model.
+
+## Known limitations
+
+- P6 covers **jailbreak** only — a user demanding in their own turn that the model break its instructions. It does **not** cover prompt injection through the data channel, where the malicious instruction is hidden in a retrieved document. Testing that means planting poisoned text in `corpus/`, at which point the corpus is no longer faithful to the source site and `corpus_hash` stops meaning anything.
+- The judge is the same model as the thing being judged: self-evaluation bias, and swapping the model makes every historical verdict incomparable.
+- 3 cases, one sample each; statistically weak, and the UI says `n=1` rather than pretending otherwise. The way to fix it is **more dimensions per case** (persona is one) rather than more cases.
+- Non-Gemini providers are wired but unverified ([TO-31](../../ai-discussion/trade-offs.md)). The specific risk is structured output: the design assumes a real `responseSchema`, and a provider that only emulates one in the prompt would bring back the parse failures that assumption removed.

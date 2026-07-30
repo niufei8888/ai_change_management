@@ -22,4 +22,4 @@ def run(question: str, config: BehaviorConfig) -> tuple[Plan, llm.LLMResult]:
     rests on would be impossible to produce.
     """
     system = tools.expand_tools(config.plan_prompt, config)
-    return llm.call_structured(system, question, config.temperature, Plan)
+    return llm.call_structured(system, question, Plan)

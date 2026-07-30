@@ -29,4 +29,4 @@ def run(
         f"Evidence:\n{blocks}"
     )
     system = tools.expand_tools(config.reflect_prompt, config)
-    return llm.call_structured(system, user, config.temperature, Reflection)
+    return llm.call_structured(system, user, Reflection)

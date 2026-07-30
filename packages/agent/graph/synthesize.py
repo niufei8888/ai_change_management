@@ -19,4 +19,4 @@ def run(
     if not sufficient:
         system += INSUFFICIENT_NOTE
     user = f"Question: {question}\n\nEvidence:\n{blocks}"
-    return llm.call(system, user, config.temperature)
+    return llm.call(system, user)
