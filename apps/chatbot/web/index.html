@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ask Luma</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #faf9f5;          /* warm paper, deliberately not pure white */
+    --surface: #ffffff;
+    --text: #1f1e1c;        /* warm near-black, deliberately not pure black */
+    --muted: #6b6862;
+    --hairline: #e8e5de;
+    --accent: #c9765a;      /* terracotta, the only accent in the app */
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1e1c; --surface: #292826; --text: #f2f0ea;
+      --muted: #a8a49b; --hairline: #3a3835; --accent: #d98c70;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    font-size: 16px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 68ch; margin: 0 auto; padding: 64px 24px 160px; }
+
+  header { margin-bottom: 48px; }
+  h1 {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 30px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em;
+  }
+  header p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .exchange { margin-bottom: 56px; }
+  .question {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 28px;
+    font-weight: 500;
+  }
+  /* The answer is not a chat bubble. It is the content of the page. */
+  .answer { white-space: pre-wrap; }
+  .answer h2, .answer h3 {
+    font-family: "Source Serif 4", Georgia, serif; font-weight: 600;
+    margin: 28px 0 8px; font-size: 19px;
+  }
+  .answer code {
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    padding: 1px 5px; border-radius: 4px; font-size: 0.9em;
+  }
+  .answer strong { font-weight: 600; }
+
+  .cites { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .cites a {
+    font-size: 13px; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--hairline); border-radius: 100px; padding: 4px 12px;
+    background: var(--surface); transition: color .15s, border-color .15s;
+  }
+  .cites a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* One indicator, no step-by-step progress. Breathing opacity, no spinner and
+     no bouncing dots -- both read as "generic web app" rather than "thinking". */
+  .thinking { color: var(--muted); font-size: 15px; animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+  .elapsed { font-variant-numeric: tabular-nums; }
+
+  details.trace { margin-top: 28px; border-top: 1px solid var(--hairline); padding-top: 14px; }
+  details.trace summary {
+    cursor: pointer; color: var(--muted); font-size: 13px; list-style: none;
+  }
+  details.trace summary::-webkit-details-marker { display: none; }
+  details.trace summary:hover { color: var(--accent); }
+  .meta { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .meta table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  .meta td { padding: 3px 10px 3px 0; vertical-align: top; }
+  .meta td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+  .node { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+  .error {
+    border-left: 2px solid var(--accent); padding-left: 14px; color: var(--muted); font-size: 15px;
+  }
+
+  .composer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, var(--bg) 72%, transparent);
+    padding: 28px 24px 32px;
+  }
+  .composer form {
+    max-width: 68ch; margin: 0 auto; display: flex; gap: 10px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 8px 8px 8px 18px;
+  }
+  .composer form:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline)); }
+  input[type=text] {
+    flex: 1; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; padding: 8px 0;
+  }
+  button {
+    border: 0; border-radius: 9px; background: var(--accent); color: #fff;
+    font: inherit; font-weight: 500; font-size: 15px; padding: 8px 18px; cursor: pointer;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+
+  .examples { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .examples button {
+    background: transparent; color: var(--muted); border: 1px solid var(--hairline);
+    border-radius: var(--radius); padding: 9px 14px; font-size: 14px; text-align: left;
+  }
+  .examples button:hover { color: var(--accent); border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ask Luma</h1>
+    <p>Questions about Luma AI products, answered from the official documentation.</p>
+  </header>
+
+  <div id="feed"></div>
+
+  <div class="examples" id="examples">
+    <button data-q="What is a Skill in Luma and when should I create one?">What is a Skill in Luma and when should I create one?</button>
+    <button data-q="What is Luma's refund policy for unused credits?">What is Luma's refund policy for unused credits?</button>
+    <button data-q="Write me a Python function to reverse a linked list.">Write me a Python function to reverse a linked list.</button>
+  </div>
+</div>
+
+<div class="composer">
+  <form id="form">
+    <input id="q" type="text" autocomplete="off" placeholder="Ask about Luma products, models, or workflows…" />
+    <button id="send" type="submit">Ask</button>
+  </form>
+</div>
+
+<script>
+const SESSION = (crypto.randomUUID?.() ?? String(Math.random())).slice(0, 12);
+const TIMEOUT_MS = 60000;
+const feed = document.getElementById("feed");
+const form = document.getElementById("form");
+const input = document.getElementById("q");
+const send = document.getElementById("send");
+const examples = document.getElementById("examples");
+
+examples.addEventListener("click", (e) => {
+  const q = e.target.dataset.q;
+  if (q) { input.value = q; form.requestSubmit(); }
+});
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const question = input.value.trim();
+  if (question) ask(question);
+});
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text) node.textContent = text;
+  return node;
+}
+
+async function ask(question) {
+  examples.remove?.();
+  input.value = "";
+  input.disabled = send.disabled = true;
+
+  const block = el("div", "exchange");
+  block.appendChild(el("div", "question", question));
+  const slot = el("div");
+  block.appendChild(slot);
+  feed.appendChild(block);
+  block.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const stop = showThinking(slot);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: SESSION, question }),
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    stop();
+    if (!response.ok) throw new Error(data.detail || response.statusText);
+    renderAnswer(slot, data);
+  } catch (err) {
+    stop();
+    slot.replaceChildren(
+      el("div", "error", err.name === "AbortError"
+        ? "That took too long and was cancelled. Try asking again."
+        : "Something went wrong: " + err.message)
+    );
+  } finally {
+    clearTimeout(timer);
+    input.disabled = send.disabled = false;
+    input.focus();
+  }
+}
+
+// Deliberately says nothing about what it is thinking about -- only that it is.
+// The elapsed counter and the copy change at 10s are the whole mitigation for a
+// wait that can reach several seconds.
+function showThinking(slot) {
+  const node = el("div", "thinking");
+  const label = el("span", null, "Thinking");
+  const secs = el("span", "elapsed", "");
+  node.append(label, secs);
+  slot.replaceChildren(node);
+
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - started) / 1000);
+    secs.textContent = elapsed ? ` · ${elapsed}s` : "";
+    if (elapsed >= 10) label.textContent = "Still reading the docs";
+  }, 250);
+  return () => clearInterval(tick);
+}
+
+function renderAnswer(slot, data) {
+  slot.replaceChildren();
+  const answer = el("div", "answer");
+  answer.innerHTML = format(data.answer);
+  slot.appendChild(answer);
+
+  if (data.citations?.length) {
+    const cites = el("div", "cites");
+    for (const c of data.citations) {
+      const a = el("a", null, c.title);
+      a.href = c.url; a.target = "_blank"; a.rel = "noopener";
+      cites.appendChild(a);
+    }
+    slot.appendChild(cites);
+  }
+  slot.appendChild(trace(data));
+}
+
+function format(text) {
+  const escaped = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return escaped
+    .replace(/^### (.*)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+// Shown after the fact, not during. This is product surface, not a debug panel:
+// it is how you check the answer came from somewhere real, and it is the same
+// trajectory the evaluation console scores.
+function trace(data) {
+  const details = el("details", "trace");
+  details.appendChild(el("summary", null, "How this answer was produced"));
+
+  const meta = el("div", "meta");
+  const table = el("table");
+  const rows = [
+    ["Version", `${data.version_label} · ${data.arm}${data.experiment_tag ? " · " + data.experiment_tag : ""}`],
+    ["Outcome", `${data.terminated_by} · ${data.loop_count} search round(s) · ${data.llm_call_count} model call(s)`],
+    ["Cost", `$${data.cost_usd.toFixed(6)} · ${data.tokens_in}/${data.tokens_out} tokens · ${data.latency_ms}ms`],
+  ];
+  for (const [k, v] of rows) {
+    const tr = document.createElement("tr");
+    tr.append(el("td", null, k), el("td", null, v));
+    table.appendChild(tr);
+  }
+  meta.appendChild(table);
+
+  for (const step of data.trajectory) {
+    const { node, latency_ms, tokens_in, tokens_out, ...rest } = step;
+    const parts = Object.entries(rest)
+      .filter(([, v]) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length))
+      .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(", ") : v}`);
+    meta.appendChild(el("div", "node", `${node}  ${parts.join("  ")}`));
+  }
+  details.appendChild(meta);
+  return details;
+}
+</script>
+</body>
+</html>

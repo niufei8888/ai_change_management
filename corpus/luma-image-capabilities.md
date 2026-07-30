@@ -1,0 +1,153 @@
+---
+title: Luma Image Capabilities
+slug: luma-image-capabilities
+url: https://lumalabs.ai/learning-center/articles/luma-image-capabilities
+---
+
+March 9, 2026
+
+## Luma Image Capabilities
+
+Any image on your board can be edited, restyled, animated, reframed, analyzed, used as a character/object/background reference, turned into video, or plugged into a larger creative workflow. It's not just a generator — it's a full image pipeline.
+
+### Generate New Images
+
+#### Text-to-Image
+
+Describe anything and get a high-quality image. Supports multiple aspect ratios and resolutions up to 4K.
+
+### Edit & Modify Existing Images
+
+#### Image-to-Image Editing
+
+Describe what you want changed (swap objects, change lighting, alter style, add/remove elements) and the image gets modified while preserving what you want to keep.
+
+**Complex Multi-Reference Edits** — Combine multiple reference images into one output (e.g., "put this person in this setting wearing this outfit").
+
+### Reframe & Resize
+
+#### Aspect Ratio Changes
+
+Convert a portrait to landscape (or any supported aspect ratio) with AI outpainting that intelligently extends the scene.
+
+Supported aspect ratios: 1:1, 9:16, 3:4, 4:3, 16:9, 21:9
+
+### Style & Variations
+
+#### Moodboards
+
+Generate variations with different styles, colors, lighting, or angles.
+
+#### Quick Composer
+
+Select an image, drag out a grid, and type a prompt to instantly fill it with variations.
+
+#### Color Palette Extraction
+
+Pull the exact color palette from any image.
+
+### Animate Your Images
+
+#### Image-to-Video
+
+Turn any still image into a video with camera movement, action, or effects.
+
+#### Keyframe Animation
+
+Use two images as start and end (5s frame) frames, and generate the video transition between them.
+
+### Character & Identity Work
+
+#### Character Reference Sheets
+
+Generate consistent multi-pose reference sets (front, side, full body) from a single image.
+
+#### Identity Consistency
+
+Keep the same character looking the same across multiple outputs.
+
+#### Portrait-to-Model Transformation
+
+Turn a portrait into high-fashion editorial aesthetics.
+
+#### Subject Extraction
+
+Cut out subjects from their background as clean cutouts.
+
+### Camera Angle Changes
+
+#### Re-angle Scenes
+
+Take an existing image and regenerate it from a different camera perspective (bird's eye, low angle, close-up, etc.)
+
+### Lip Sync from Image
+
+#### Image + Audio → Talking Video
+
+Give it a portrait and a speech audio track, and it can create a realistic talking-head video with lip sync.
+
+### Use Images In Larger Workflows
+
+#### Storyboards
+
+Build frame-by-frame visual narratives where each image builds on the last.
+
+#### Comic Book Pages
+
+Create sequential comic panels with consistent characters.
+
+#### Brand Campaigns
+
+Use your images as the foundation for multi-asset campaigns with logo integration.
+
+#### Social Media Video Ads
+
+Turn product images into full video ads with hooks, captions, and audio.
+
+#### Product Showcase Loops
+
+Turn a product photo into a seamless rotating video loop.
+
+#### Slide Decks
+
+Incorporate images into presentation slides.
+
+#### Infographics
+
+Use images as part of data visualizations.
+
+#### Platform Adaptation
+
+Transform content across social media platforms (Instagram → TikTok → YouTube) with smart aspect ratio changes.
+
+### Analyze & Evaluate Images
+
+#### Quality Assessment
+
+AI-powered evaluation of composition, aesthetics, and technical quality.
+
+#### Brand Compliance
+
+Check images against brand guidelines (colors, fonts, style).
+
+#### Consistency Checks
+
+Verify visual consistency across a set of images (characters, products, style).
+
+#### Text Translation
+
+Translate text embedded in images (posters, ads) while preserving the design.
+
+### Import Images
+
+#### Upload
+
+Drop (or upload) images directly onto the board.
+
+#### Web Search & Download
+
+It can search the web, find reference images, and pull them onto your board.
+
+#### PDF Extraction
+
+Pull images out of PDF documents.

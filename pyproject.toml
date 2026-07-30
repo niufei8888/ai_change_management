@@ -1,0 +1,25 @@
+[project]
+name = "ask-luma"
+version = "0.1.0"
+description = "Ask Luma + Driftline: a Q&A chatbot and the system that manages changes to its behavior"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlmodel>=0.0.22",
+    "litellm>=1.55",
+    "tenacity>=9.0",
+    "python-dotenv>=1.0",
+    "httpx>=0.28",
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# One venv for the whole monorepo. Both packages are installed editable so the
+# directory boundary between them stays real without three dependency files.
+[tool.hatch.build.targets.wheel]
+packages = ["packages/behavior_core", "apps/chatbot/src/ask_luma"]
