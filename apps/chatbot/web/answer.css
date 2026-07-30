@@ -1,0 +1,78 @@
+/* How a transcript looks. Loaded by both /chat and /console from the chatbot's
+   static mount, so an answer renders identically wherever you read it. That is
+   not tidiness for its own sake: the console exists to judge what the product
+   produced, and it cannot do that honestly while displaying it differently.
+
+   Both pages define --accent, --text, --hairline, --surface and --radius before
+   this file is used, and custom properties resolve at use time, so the two
+   surfaces keep their own palettes and dark mode follows for free. */
+
+:root {
+  /* Same percentage, different pigment: the user's turn borrows the accent and
+     the assistant's borrows the text colour. Tinting both with the accent would
+     have separated them by hue alone, which is the one axis that disappears for
+     a colourblind reader; this way they differ in lightness too. Mixed against
+     `transparent` rather than a named colour so one declaration composites over
+     the paper page on /chat and over the white cards in the console. */
+  --msg-user: color-mix(in srgb, var(--accent) 8%, transparent);
+  --msg-bot: color-mix(in srgb, var(--text) 8%, transparent);
+
+  /* The two turns lean opposite ways: the question sits against the left edge
+     with air on its right, the answer against the right edge with air on its
+     left. Colour alone was doing all the work of telling them apart, and a
+     tinted box is a weak signal next to the shape of the page. */
+  --turn-gap: 12%;
+}
+
+/* The top margin matters in the console, where a question can follow a persona
+   note or start a table cell; on /chat the exchange above already owns the gap,
+   so 10px there costs nothing. */
+.question {
+  background: var(--msg-user);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin: 10px var(--turn-gap) 12px 0;
+  font-weight: 500;
+}
+
+.answer {
+  background: var(--msg-bot);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 0 0 12px var(--turn-gap);
+}
+
+/* Block spacing lives on the children, not on .answer, so a rendered answer
+   never opens or closes with a stray gap inside its own box. */
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer p { margin: 0 0 12px; }
+.answer ul, .answer ol { margin: 0 0 12px; padding-left: 22px; }
+.answer li { margin: 3px 0; }
+.answer li::marker { color: var(--muted); }
+.answer strong { font-weight: 600; }
+
+.answer h2, .answer h3 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 600;
+  margin: 20px 0 8px;
+  font-size: 1.15em;
+}
+
+.answer code {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* Citations are links in the Source line itself rather than a separate row of
+   chips. There is no third place to look, and nothing to keep in sync with the
+   sentence the model actually wrote. */
+.answer a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+}
+.answer a:hover { color: var(--accent); }

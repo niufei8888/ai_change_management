@@ -8,6 +8,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+<!-- Served from the chatbot's static mount, not copied here. A transcript must
+     not look like a different product depending on which surface you read it on,
+     and the console is the surface you judge the product's output on, so it is
+     the one that has no business having its own opinion about it. The dependency
+     runs console -> chatbot, the direction that is allowed; and /console only
+     exists once driftline has been attached to the chatbot's app, so whenever
+     this page is reachable, /static is too. -->
+<link rel="stylesheet" href="/static/answer.css" />
+<script src="/static/answer.js"></script>
 <style>
   /* Same tokens as /chat (TO-18). One product, two surfaces. */
   :root {
@@ -17,12 +26,6 @@
     --muted: #6b6862;
     --hairline: #e8e5de;
     --accent: #c9765a;
-    /* Same two declarations as apps/chatbot/web/index.html, on purpose: a
-       transcript should not look like a different product depending on which
-       surface you are reading it on. Mixed against `transparent` so they
-       composite over the white cards here and the paper page there. */
-    --msg-user: color-mix(in srgb, var(--accent) 8%, transparent);
-    --msg-bot: color-mix(in srgb, var(--text) 8%, transparent);
     --pass: #3f7d58;
     --fail: #b0483a;
     --radius: 8px;
@@ -160,16 +163,9 @@
     font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
     color: var(--muted); margin: 0 0 8px; font-weight: 600;
   }
-  /* Same class names as the chatbot for the same two things. The question used to
-     be `small muted` next to a full-size answer, which is why it disappeared. */
-  .question {
-    background: var(--msg-user); border-radius: 6px;
-    padding: 11px 13px; margin: 10px 0; font-weight: 500;
-  }
-  .answer {
-    white-space: pre-wrap; background: var(--msg-bot); border-radius: 6px;
-    padding: 11px 13px; margin: 10px 0;
-  }
+  /* .question and .answer come from answer.css. The heading rule above would win
+     over its `.answer h2` on font-size if it were not scoped to .assert-cols, so
+     leave that scoping alone. */
 
   details { margin-top: 10px; }
   summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
@@ -398,6 +394,16 @@ const el = (tag, cls, text) => {
   return n;
 };
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+// One bubble, rendered by answer.js so that what you judge here is what a user
+// would have seen. Citations are optional because a BenchResult does not carry
+// them -- a simulated answer still renders, just without links.
+function answerView(text, citations) {
+  const node = el("div", "answer");
+  if (text) node.innerHTML = answerHtml(text, citations);
+  else node.textContent = "(empty)";
+  return node;
+}
 
 async function api(path, options) {
   const response = await fetch(API + path, {
@@ -742,10 +748,7 @@ function conversationView(question, data) {
   box.appendChild(head);
 
   const body = el("div", "body");
-  body.append(el("div", "question", question), el("div", "answer", data.answer || "(empty)"));
-  if (data.citations?.length) {
-    body.appendChild(el("div", "small muted", "cites: " + data.citations.map((c) => c.title).join(" · ")));
-  }
+  body.append(el("div", "question", question), answerView(data.answer, data.citations));
   body.appendChild(trajectoryView(data.trajectory));
   body.appendChild(collapsible("Expanded prompts (after # substitution)", () => {
     const wrap = el("div");
@@ -882,7 +885,7 @@ function caseView(result) {
   body.append(
     el("div", "small muted", result.persona_note),
     el("div", "question", result.question),
-    el("div", "answer", result.answer || "(empty)"),
+    answerView(result.answer),
   );
 
   const cols = el("div", "assert-cols");
@@ -1040,15 +1043,13 @@ async function refreshProduction() {
       // The question is in the row above as a summary column; repeating it here as
       // a bubble is what makes an expanded row read as a transcript, the same way
       // the other two tabs do.
-      cell.append(
-        el("div", "question", row.question),
-        el("div", "answer", row.answer || row.error || "(empty)"),
+      cell.appendChild(el("div", "question", row.question));
+      // A failed row has a traceback where the answer would be. It goes through
+      // the same path the simulation card uses for one, not through the answer
+      // renderer, which would turn its indentation into markdown.
+      cell.appendChild(
+        row.answer ? answerView(row.answer, row.citations) : el("div", "expanded", row.error || "(empty)"),
       );
-      if (row.citations?.length) {
-        cell.appendChild(
-          el("div", "small muted", "cites: " + row.citations.map((c) => c.title).join(" · ")),
-        );
-      }
       cell.appendChild(trajectoryView(row.trajectory || []));
     });
 

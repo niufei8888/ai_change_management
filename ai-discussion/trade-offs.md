@@ -342,6 +342,15 @@ Render 免费层**没有 shell、也不支持 one-off job**，而且文件系统
 - **代价**：shadcn/ui 的默认主题是冷调 zinc/slate，要重写一遍 CSS 变量。（最终没用 shadcn，见 [TO-22](#to-22-交付形态能一口气读完零构建跑起来)。）
 - **要守住的一条**：强调色只用在真正需要行动或警示的地方。到处都是强调色就等于没有强调色。
 
+**Step 4 收口：一份 transcript 的样式和渲染都从两个页面里拆出来共用**
+
+- **原文有一句话现在不成立了**：「模型回答**不套气泡**，就是流动的正文」。回答现在也是气泡了，因为**只靠颜色区分两个角色太弱**。改法是让两个角色朝相反方向偏移：问题贴左、右侧留白，回答贴右、左侧留白（`--turn-gap: 12%`）。颜色仍在，但形状开始承担一部分区分工作。
+- **`answer.css` + `answer.js` 从 chatbot 的 web 目录出，两个页面都从 `/static/` 加载同一份**。之前 `--msg-user` / `--msg-bot` 两行在两个 HTML 里各写一份并附注释说「故意重复」，而这次要共用的东西（一个 markdown 渲染器 + 一套排版）大到重复就一定会漂移。**而漂移的后果特别难看**：console 存在的意义是评判产品输出，如果它把同一段文字渲染成另一个样子，它就是个不可信的仪表。
+- **依赖方向是 console → chatbot，即允许的那一侧**（console 的 Python 本来就 import `agent`）。而且没有死角：`/console` 只在 driftline `attach()` 到 chatbot 的 app 上之后才存在，所以这个页面可达时 `/static` 必然可达；chatbot 单跑时它加载的是自己的 mount。
+- **引用链接只能在渲染期加，不能改 prompt 去输出 markdown 链接。** `Source:` 那一行是**两个自动化消费者的唯一输入**：`runner._cited()` 靠标题字面出现在答案里来生成 citations，`checks._cites_real_article()` 用 `^Source:` 行加一份很严的残余字符白名单做 blocking 检查，而 `[` `]` `(` `)` 都不在白名单里。让模型写 `Source: [标题](url)` 会**直接把那条 golden case 判红**。所以链接是前端按后端已解析好的 `citations` 在渲染时套上去的，答案文本一个字不动。
+- **顺带一个只有做了才知道的事实**：`How to Create Skills in Luma` 这篇的 slug 是 `create-luma-skills`。标题和 URL 对不上，所以「从标题拼 URL」这条路本来就走不通，必须用后端给的 `citations`。
+- **原来那排 `.cites` chip 删掉了**。`_cited()` 的匹配前提就是标题字面出现在答案里，所以 chip 和 `Source:` 行**按构造必然一模一样**，只隔一行。现在只有一处地方看引用。代价：万一模型引了文章却没写 `Source:` 行，链接就不显示了——但那本来就是 `cites_real_article` 要判红的 prompt 不合规，不该由前端替它遮掉。
+
 ### TO-19 只有三个 API 端点，语料目录不对前端开放
 
 > 已并入 [TO-17](#to-17-只暴露结果不暴露过程和素材)。编号保留：共 5 处引用。原本独立成条，是因为它是 Step 1 定 API 面时的决定，而 TO-17 是定交互时的决定——两次不同的对话，同一个取向。
