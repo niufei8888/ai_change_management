@@ -1,6 +1,6 @@
 # APPROACH
 
-**Live at <!-- RENDER_URL -->** (console at `/console`), and `docker compose up --build` locally. The hosted instance is a free tier: the first request after idle takes about a minute to wake, and its data resets on each cold start. §Deployment at the bottom says what that cost bought and what it did not.
+**Live at <https://ai-change-management.onrender.com>** (console at [`/console`](https://ai-change-management.onrender.com/console)), and `docker compose up --build` locally. The hosted instance is a free tier: the first request after idle takes about a minute to wake, and its data resets on each cold start. §Deployment at the bottom says what that cost bought and what it did not.
 
 ---
 
@@ -32,7 +32,7 @@ The prompt says "a team" and does not say which one. I did not ask; I picked, an
 
 ### What "working software" means here
 
-- 2,983 lines of Python, 1,340 lines of hand-written frontend, no build chain
+- 3,151 lines of Python, 1,542 lines of hand-written frontend, no build chain
 - One process serves both apps; `docker compose up --build` is the whole setup
 - 39 articles committed (`corpus_hash 73224a81445a5258`), so the container needs no network except the model API
 - A golden dataset of 3 cases and 2 personas (`dataset_hash 1f7c2f65d6f95198`)
@@ -44,7 +44,7 @@ The full design record — including the approaches that failed and why — is i
 
 ## Key decisions and tradeoffs
 
-There are 21 numbered decisions in [`ai-discussion/trade-offs.md`](ai-discussion/trade-offs.md), each with what it costs and what would overturn it. Five carry the argument.
+There are 24 numbered decisions in [`ai-discussion/trade-offs.md`](ai-discussion/trade-offs.md), each with what it costs and what would overturn it. Five carry the argument.
 
 ### 1. Behavior is a versioned configuration, resolved on the request path
 
@@ -183,13 +183,14 @@ Ordered by what I would actually do, not by size.
 3. **Side-by-side against the active version.** Recovers the "flipped from pass to fail" framing that [TO-25](ai-discussion/trade-offs.md) gave up. The data model already supports it and the seed data already contains both runs; it is one page that reads two results and diffs them.
 4. **A judge from a different model family, with its version recorded in `BenchRun`.** Removes self-evaluation bias, and recording the version makes "these two runs are not comparable" a visible fact rather than a silent one. `BenchRun` does not store `model` today, which is a real gap.
 5. **Multi-turn.** The largest gap and the largest amount of work, because it needs a different evaluation unit: assertions about whether context was correctly inherited across turns.
-6. **Deploy it.**
 
 ---
 
 ## How I directed the AI
 
 The prompt asks how I directed the tools and where I pushed back. Three moments actually shaped the result, and what they have in common is that **I stopped trusting my own design document and ran the thing.**
+
+The unedited sessions are in [`ai-sessions/`](ai-sessions/) so the three stories below can be checked rather than taken on my word. They are half in Chinese, so start with [`ai-sessions/README.md`](ai-sessions/README.md), which quotes and translates the dozen turns that changed the product and says where each one landed in the code.
 
 ### I predicted five regressions. All five failed to reproduce.
 

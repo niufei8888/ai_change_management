@@ -5,6 +5,14 @@
 # is `sync: false` -- Render prompts for it and stores it, and it never lands in
 # git. See TO-32 and TO-33.
 #
+# Read this before trusting the file: Render only applies render.yaml to services
+# it manages as a Blueprint. The live instance was created through the dashboard,
+# so nothing reads this, and SEED_DEMO had to be set by hand in the Environment
+# tab. That is worth stating rather than leaving implied -- a config file that
+# looks authoritative and is not is exactly the drift this product exists to
+# surface, and it caught me here. This stays because it still documents what the
+# service should look like and is what someone else would deploy from.
+#
 # Note there is no `dockerCommand`. The Dockerfile's CMD already expands
 # ${PORT:-8000} in a shell, so it works both here (where Render injects PORT) and
 # under `docker compose up` locally. Overriding it from the dashboard with a bare

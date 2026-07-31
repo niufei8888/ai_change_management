@@ -11,7 +11,7 @@ Start with [APPROACH.md](APPROACH.md) for what was built and why, what was left 
 
 ## Live
 
-**<!-- RENDER_URL -->** (chatbot) · **<!-- RENDER_URL -->/console** (console)
+**<https://ai-change-management.onrender.com>** (chatbot) · **<https://ai-change-management.onrender.com/console>** (console)
 
 Two things to expect, both consequences of a free hosting tier rather than of anything being broken:
 
@@ -68,6 +68,7 @@ corpus/                  39 articles, fetched at build time, committed
 datasets/golden.yaml     2 personas, 3 golden cases
 datasets/demo_seed.json  real rows exported from a live run, for a populated console
 ai-discussion/           the full design record, in Chinese, including rejected approaches
+ai-sessions/             the unedited AI coding sessions, redacted and rendered
 ```
 
 `apps/chatbot` and `apps/console` never import each other. Both depend on `packages/agent`, which is what makes "the benchmark ran the same loop production runs" structurally true rather than a claim.
@@ -80,4 +81,8 @@ Written in Chinese, and it is the honest version — it includes the approaches 
 - [ai-discussion/design_step1_ai_app.md](ai-discussion/design_step1_ai_app.md) — Ask Luma, including five attempts at a demo regression that all failed to reproduce
 - [ai-discussion/design_step2_console_with_benchmark.md](ai-discussion/design_step2_console_with_benchmark.md) — Driftline
 - [ai-discussion/design_step3_misc_and_wrap_up.md](ai-discussion/design_step3_misc_and_wrap_up.md) — the two signposted non-goals, and the delivery surface
-- [ai-discussion/trade-offs.md](ai-discussion/trade-offs.md) — 21 numbered decisions, each with what it costs and what would overturn it, and an index of the five that carry the argument
+- [ai-discussion/design_step4_deploy.md](ai-discussion/design_step4_deploy.md) — deployment, including the `$PORT` form that was measured to fail before it was relied on
+- [ai-discussion/design_step5_prepare_for_submission.md](ai-discussion/design_step5_prepare_for_submission.md) — packaging, and a credential that a shape-based scan reported as clean
+- [ai-discussion/trade-offs.md](ai-discussion/trade-offs.md) — 24 numbered decisions, each with what it costs and what would overturn it, and an index of the five that carry the argument
+
+The **unedited AI coding sessions** are in [ai-sessions/](ai-sessions/) — start with its [README](ai-sessions/README.md), which translates the turns that changed the product and says where each one landed in the code.
