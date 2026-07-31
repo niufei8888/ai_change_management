@@ -22,7 +22,7 @@ what I meant, not what I said, and evidence stops being evidence once I have rew
 it. What I did instead is [§The moments that shaped it](#the-moments-that-shaped-it)
 below: the instructions that actually changed the product, quoted in the original and
 translated line by line, each with what it changed and where that landed in the code.
-Roughly a dozen turns out of forty-eight, chosen for consequence.
+Roughly a dozen turns out of fifty-four, chosen for consequence.
 
 One more thing that will otherwise read as incoherence: **the Chinese is dictated,
 not typed.** Speech-to-text artifacts are all over it. `凸靠` is "toolcall", `Gadriel`
@@ -35,8 +35,8 @@ is "guardrail", `local fallacy team system` is "local file system", `pathon` is
 
 | file | title | my turns | what it is |
 | --- | --- | --- | --- |
-| [`planning.md`](planning.md) | `planning` | 27 | The spine. Reading the brief, arguing about scope, then design and implementation of all five steps. |
-| [`qq.md`](qq.md) | `qq` | 21 | The side channel. Questions about the brief's own vocabulary, then git setup, then the deployment research. |
+| [`planning.md`](planning.md) | `planning` | 32 | The spine. Reading the brief, arguing about scope, then design and implementation of all five steps. |
+| [`qq.md`](qq.md) | `qq` | 22 | The side channel. Questions about the brief's own vocabulary, then git setup, then the deployment research. |
 
 Both sessions are titled by me, in Cursor. `qq` is where I went when I wanted an
 answer rather than a change — it opens two minutes after the first design draft

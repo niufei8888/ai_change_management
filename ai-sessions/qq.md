@@ -1412,3 +1412,9 @@ The corpus hash matches what's in the transcript, and the active version is v1-b
 
 现在库是干净的,可以按那次会话给的 8 步操作脚本直接录了。
 
+---
+
+## User &middot; Friday, Jul 31, 2026, 3:19 PM (UTC-7)
+
+我刚刚更新了 @APPROACH.md 。然后你写一个新的 Git commit，就叫“consolidate @APPROACH.md ”，然后 push 到 remote。
+
