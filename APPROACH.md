@@ -2,21 +2,22 @@
 
 ## Where it runs, and how to run it
 
-**Deployed on Render** — free tier, Docker, auto-deploys from `main` ([`render.yaml`](render.yaml)).
-
+**Deployed on Render.com**
 - Demo chatbot app: <https://ai-change-management.onrender.com>
 - Change management console: <https://ai-change-management.onrender.com/console>
 
-The first request after idle takes about a minute to wake, and a free instance loses its filesystem every time it sleeps, so the hosted console starts empty.
+The 1st request after idle takes about a minute to wake. A free instance also loses its filesystem every time it sleeps, so the console re-seeds itself on each cold start from [`datasets/demo_seed.json`](datasets/demo_seed.json) — two real recorded benchmark runs, not fabricated rows; anything you add yourself lasts until the next sleep.
 
-**Locally**, one command — no build step, the corpus is committed, nothing but the model API leaves the machine:
+**Locally**, one command:
 
 ```bash
 cp .env.example .env       # fill GEMINI_API_KEY; add SEED_DEMO=1 for a populated console
 docker compose up --build  # http://localhost:8000 and /console
 ```
 
-Built and measured on Gemini (`gemini/gemini-3.1-flash-lite`), which this take-home does not provision a key for. `MODEL` also accepts `anthropic/…` and `openai/…` — routing, key check and price table are in place, but I had neither key, so `.env.example` calls those "wired, not verified".
+Built and measured on Gemini (`gemini/gemini-3.1-flash-lite`). `MODEL` also accepts `anthropic/…` and `openai/…` — routing, key check and price table are in place, but I had neither key, so `.env.example` calls those "wired, not verified".
+
+Github repo: <https://github.com/niufei8888/ai_change_management>
 
 ## What you built and why
 
